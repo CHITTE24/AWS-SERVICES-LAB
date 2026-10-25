@@ -1,0 +1,24 @@
+# --- Secrets and local settings (never commit these) ---
+.env
+*.pem
+*.key
+.aws/
+
+# --- Local data created while the app runs ---
+data/
+logs/
+*.db
+*.sqlite3
+
+# --- Python virtual environment and caches ---
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# --- Editor and OS files ---
+.vscode/settings.json
+.idea/
+.DS_Store
+Thumbs.db

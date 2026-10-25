@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {# "block title" lets each page set its own browser-tab title. #}
+  <title>{% block title %}{{ app_title }}{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">{{ app_title }}</a>
+    {# The menu appears only when someone is logged in. #}
+    {% if username %}
+    <nav>
+      <a href="/">Services</a>
+      <a href="/experiments">Experiments</a>
+      <a href="/history">History</a>
+      {# Logout is a form (POST) so another website cannot log you out with a simple link. #}
+      <form method="post" action="/logout" class="inline">
+        <button type="submit" class="link-button">Log out ({{ username }})</button>
+      </form>
+    </nav>
+    {% endif %}
+  </header>
+
+  {# A reminder of the region and safety mode, shown on every page. #}
+  {% if username %}
+  <div class="statusbar">
+    Default region: <strong>{{ default_region }}</strong> ·
+    {% if writes_allowed %}
+      <span class="badge badge-warning">Write operations ENABLED</span>
+    {% else %}
+      <span class="badge badge-success">Read-only mode</span>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <main class="container">
+    {# Each page puts its own content here. #}
+    {% block content %}{% endblock %}
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

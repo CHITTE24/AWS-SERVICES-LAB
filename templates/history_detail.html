@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% from "_macros.html" import render_data, render_experiment %}
+{% block title %}Run #{{ run.id }} · {{ app_title }}{% endblock %}
+{% block content %}
+<p><a href="/history">← History</a></p>
+<h1>Run #{{ run.id }}: {{ run.name }} <span class="badge badge-{{ run.status }}">{{ run.status }}</span></h1>
+<p class="muted small">{{ run.kind }} · {{ run.created_at }} UTC · by {{ run.username }}</p>
+{% if run.inputs %}<p class="muted small">Inputs: {{ run.inputs }}</p>{% endif %}
+
+{# Experiments and single operations store their results in different shapes. #}
+{% if run.kind == "experiment" %}
+  {{ render_experiment(run.result) }}
+{% elif run.result is mapping and run.result.error %}
+  <div class="alert alert-error">{{ run.result.error }}</div>
+{% else %}
+  {{ render_data(run.result) }}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% from "_macros.html" import render_data %}
+{% block title %}{{ operation.label }} · {{ app_title }}{% endblock %}
+{% block content %}
+<p><a href="/services/{{ service.id }}">← {{ service.name }}</a></p>
+<h1>{{ service.name }}: {{ operation.label }}</h1>
+
+{% if inputs %}<p class="muted small">Inputs: {{ inputs }}</p>{% endif %}
+
+{% if error_message %}
+  <div class="alert alert-error">{{ error_message }}</div>
+{% else %}
+  {{ render_data(result) }}
+{% endif %}
+
+<p class="muted small">Saved to history as <a href="/history/{{ run_id }}">run #{{ run_id }}</a>.</p>
+{% endblock %}

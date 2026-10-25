@@ -1,0 +1,26 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AwsServicesLabReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListAllMyBuckets",
+        "s3:GetBucketLocation",
+        "s3:ListBucket",
+        "ec2:DescribeInstances",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeRegions",
+        "iam:ListUsers",
+        "iam:ListRoles",
+        "iam:GetAccountSummary",
+        "lambda:ListFunctions",
+        "cloudwatch:DescribeAlarms",
+        "cloudwatch:GetMetricStatistics",
+        "dynamodb:ListTables",
+        "dynamodb:DescribeTable"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

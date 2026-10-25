@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% from "_macros.html" import input_fields %}
+{% block title %}{{ service.name }} · {{ app_title }}{% endblock %}
+{% block content %}
+<p><a href="/">← All services</a></p>
+<h1>{{ service.name }}</h1>
+<p class="muted">{{ service.description }}</p>
+
+{% if not service.operations %}
+  <div class="alert">This service has no operations yet. See docs/CODE_CUSTOMIZATION_GUIDE.md, section "Add a new operation".</div>
+{% endif %}
+
+{# One small form per operation. Submitting it POSTs to /services/<service>/<operation>. #}
+{% for operation in service.operations %}
+<div class="card">
+  <h2>{{ operation.label }} <span class="badge badge-{{ 'success' if operation.kind == 'read' else 'warning' }}">{{ operation.kind }}</span></h2>
+  <form method="post" action="/services/{{ service.id }}/{{ operation.id }}" class="run-form">
+    {{ input_fields(operation.inputs) }}
+    <button type="submit">Run</button>
+  </form>
+</div>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,5 @@
+# Extra packages used only for development and automated tests.
+-r requirements.txt                         # Include everything the app needs.
+pytest>=8.0                                 # Runs the automated tests.
+httpx>=0.27                                 # Needed by FastAPI's TestClient to send fake browser requests.
+moto[s3,ec2,iam,sts,dynamodb,cloudwatch]>=5.0  # Fake AWS services so tests never touch real AWS.

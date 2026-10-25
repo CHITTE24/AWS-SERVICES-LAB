@@ -1,0 +1,26 @@
+# systemd service file: keeps the app running on EC2 and restarts it after crashes or reboots.
+# Install it with the commands in docs/EC2_DEPLOYMENT.md (it is copied to /etc/systemd/system/).
+
+[Unit]
+Description=AWS Services Lab (FastAPI)
+# Wait until the network is up before starting.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Run as the normal ec2-user account, not as root.
+User=ec2-user
+# The folder the repository was cloned into. main.py loads .env from this folder.
+WorkingDirectory=/home/ec2-user/aws-services-lab
+# Listens only on 127.0.0.1 (the server itself). Reach it through an SSH tunnel (see the docs).
+ExecStart=/home/ec2-user/aws-services-lab/.venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8000
+# Restart automatically if the app crashes, after waiting 5 seconds.
+Restart=on-failure
+RestartSec=5
+# Basic hardening: the app cannot gain extra privileges and gets its own private /tmp.
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+# Start automatically when the server boots.
+WantedBy=multi-user.target

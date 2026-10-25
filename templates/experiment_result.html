@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% from "_macros.html" import render_experiment %}
+{% block title %}{{ experiment.title }} result · {{ app_title }}{% endblock %}
+{% block content %}
+<p><a href="/experiments/{{ experiment.id }}">← Run again</a></p>
+<h1>{{ experiment.title }} <span class="badge badge-{{ status }}">{{ status }}</span></h1>
+{% if inputs %}<p class="muted small">Inputs: {{ inputs }}</p>{% endif %}
+
+{{ render_experiment(result) }}
+
+<p class="muted small">Saved to history as <a href="/history/{{ run_id }}">run #{{ run_id }}</a>.</p>
+{% endblock %}

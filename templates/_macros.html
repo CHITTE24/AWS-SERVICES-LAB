@@ -1,0 +1,79 @@
+{#
+  Reusable template pieces ("macros" work like functions inside templates).
+  Import them in a page with:  {% from "_macros.html" import render_data, input_fields %}
+#}
+
+{# Shows any result: a list of dictionaries becomes a table, a dictionary becomes a two-column table. #}
+{% macro render_data(value) %}
+  {% if value is mapping %}
+    {# "mapping" means a dictionary. #}
+    <table class="data-table">
+      {% for key, item in value.items() %}
+      <tr><th>{{ key }}</th><td>{{ render_data(item) }}</td></tr>
+      {% endfor %}
+    </table>
+  {% elif value is iterable and value is not string %}
+    {# A list. If its first item is a dictionary, use the dictionary keys as table headings. #}
+    {% if value | length == 0 %}
+      <p class="muted">No items found.</p>
+    {% elif value[0] is mapping %}
+      <div class="table-scroll">
+      <table class="data-table">
+        <tr>{% for key in value[0].keys() %}<th>{{ key }}</th>{% endfor %}</tr>
+        {% for row in value %}
+        <tr>{% for key in value[0].keys() %}<td>{{ render_data(row[key]) }}</td>{% endfor %}</tr>
+        {% endfor %}
+      </table>
+      </div>
+    {% else %}
+      <ul>{% for item in value %}<li>{{ render_data(item) }}</li>{% endfor %}</ul>
+    {% endif %}
+  {% else %}
+    {# Plain text or numbers. Jinja escapes HTML automatically, so AWS data cannot inject scripts. #}
+    {{ value }}
+  {% endif %}
+{% endmacro %}
+
+{# Builds form inputs from field dictionaries (the format is described in core/inputs.py). #}
+{% macro input_fields(fields) %}
+  {% for field in fields %}
+  <label>
+    {{ field.label }}{% if field.required %} *{% endif %}
+    <input name="{{ field.name }}"
+           type="{{ 'number' if field.type == 'number' else 'text' }}"
+           {# Pre-fills the field with its default value, if it has one. #}
+           value="{{ field.default if field.default is not none else '' }}"
+           {% if field.min is defined %}min="{{ field.min }}"{% endif %}
+           {% if field.max is defined %}max="{{ field.max }}"{% endif %}
+           {% if field.type == 'region' %}placeholder="for example us-east-1"{% endif %}
+           {% if field.required %}required{% endif %}>
+  </label>
+  {% endfor %}
+{% endmacro %}
+
+{# Shows an experiment result dictionary (format described in experiments/steps.py). #}
+{% macro render_experiment(result) %}
+  {% if result.errors %}
+  <div class="alert alert-error">
+    <strong>Some steps failed:</strong>
+    <ul>{% for message in result.errors %}<li>{{ message }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  {% if result.summary %}
+  <div class="summary-grid">
+    {% for label, number in result.summary.items() %}
+    <div class="summary-card"><div class="summary-label">{{ label }}</div><div class="summary-value">{{ number }}</div></div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% for table in result.tables %}
+  <h3>{{ table.title }}</h3>
+  {{ render_data(table.rows) }}
+  {% endfor %}
+
+  {% for note in result.notes %}
+  <p class="note">{{ note }}</p>
+  {% endfor %}
+{% endmacro %}

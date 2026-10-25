@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Experiments · {{ app_title }}{% endblock %}
+{% block content %}
+<h1>Experiments</h1>
+<p class="muted">Each experiment combines several AWS services into one report. All of them are read-only.</p>
+<div class="card-grid">
+  {% for experiment in experiments %}
+  <a class="card service-card" href="/experiments/{{ experiment.id }}">
+    <strong>{{ experiment.title }}</strong>
+    <span class="muted">{{ experiment.description }}</span>
+    <span class="small">Uses: {{ experiment.services | join(", ") }}</span>
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}

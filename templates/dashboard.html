@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>AWS services</h1>
+<p class="muted">Choose a service to run safe, read-only operations against your AWS account.</p>
+
+{# groups is a list of (category, services) pairs built in catalog/services.py. #}
+{% for category, services in groups %}
+  {% if services %}
+  <section>
+    <h2>{{ category.name }}</h2>
+    <div class="card-grid">
+      {% for service in services %}
+      <a class="card service-card" href="/services/{{ service.id }}">
+        <strong>{{ service.name }}</strong>
+        <span class="muted">{{ service.description }}</span>
+        <span class="small">{{ service.operations | length }} operation(s)</span>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+{% endfor %}
+
+<section>
+  <h2>Recent runs</h2>
+  {% if recent_runs %}
+    <ul class="plain-list">
+    {% for run in recent_runs %}
+      <li><span class="badge badge-{{ run.status }}">{{ run.status }}</span>
+          <a href="/history/{{ run.id }}">{{ run.name }}</a> <span class="muted small">{{ run.created_at }}</span></li>
+    {% endfor %}
+    </ul>
+  {% else %}
+    <p class="muted">Nothing run yet. Try <a href="/services/sts">AWS STS → Who am I?</a> first.</p>
+  {% endif %}
+</section>
+{% endblock %}

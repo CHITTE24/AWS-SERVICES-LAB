@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}History · {{ app_title }}{% endblock %}
+{% block content %}
+<h1>Run history</h1>
+<p class="muted">Every operation and experiment is saved in the local SQLite database (data/lab.db).</p>
+{% if runs %}
+<div class="table-scroll">
+<table class="data-table">
+  <tr><th>#</th><th>When (UTC)</th><th>Type</th><th>Name</th><th>Status</th><th>User</th></tr>
+  {% for run in runs %}
+  <tr>
+    <td><a href="/history/{{ run.id }}">{{ run.id }}</a></td>
+    <td>{{ run.created_at }}</td>
+    <td>{{ run.kind }}</td>
+    <td><a href="/history/{{ run.id }}">{{ run.name }}</a></td>
+    <td><span class="badge badge-{{ run.status }}">{{ run.status }}</span></td>
+    <td>{{ run.username }}</td>
+  </tr>
+  {% endfor %}
+</table>
+</div>
+{% else %}
+<p class="muted">No runs yet.</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% from "_macros.html" import input_fields %}
+{% block title %}{{ experiment.title }} · {{ app_title }}{% endblock %}
+{% block content %}
+<p><a href="/experiments">← All experiments</a></p>
+<h1>{{ experiment.title }}</h1>
+<p class="muted">{{ experiment.description }}</p>
+<p class="small">AWS services used: {{ experiment.services | join(", ") }}</p>
+
+{% if error_message %}<div class="alert alert-error">{{ error_message }}</div>{% endif %}
+
+<div class="card">
+  <form method="post" action="/experiments/{{ experiment.id }}" class="run-form">
+    {{ input_fields(experiment.inputs) }}
+    <button type="submit">Run experiment</button>
+  </form>
+</div>
+{% endblock %}
