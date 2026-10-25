@@ -45,6 +45,7 @@ On EC2, the app uses an **IAM role** instead of access keys. Keys never need to 
 
 1. IAM → **Policies → Create policy → JSON**. Paste the contents of `deploy/iam-readonly-policy.json` and name it `AwsServicesLabReadOnly`.
 2. IAM → **Roles → Create role** → Trusted entity: **AWS service → EC2** → attach `AwsServicesLabReadOnly` → name it `AwsServicesLabRole`.
+3. Once your S3 bucket, KMS key, secret, and Lambda function exist, also create and attach a policy from `deploy/iam-ec2-app-policy.json` (replace every `YOUR_...` placeholder first). See README → *AWS Security Setup*.
 
 ### E2. Launch the instance (AWS Console)
 
@@ -91,12 +92,11 @@ python3.11 -m venv .venv
 
 ```bash
 cp .env.example .env
-.venv/bin/python scripts/make_password_hash.py                 # Prints ADMIN_PASSWORD_HASH=...
 .venv/bin/python -c "import secrets; print(secrets.token_hex(32))"   # Prints a SESSION_SECRET value
-nano .env                                                      # Paste both values. Ctrl+O saves, Ctrl+X exits
+nano .env                                                      # Paste it, and fill in the AWS references. Ctrl+O saves, Ctrl+X exits
 chmod 600 .env                                                 # Only ec2-user can read this file
 ```
-Leave `AWS_PROFILE` **empty** on EC2, so Boto3 uses the instance's IAM role. Set `AWS_REGION` to the region you want to inspect.
+Leave `AWS_PROFILE` **empty** on EC2, so Boto3 uses the instance's IAM role. Set `AWS_REGION` to the region of your resources. Set `APP_MODE=aws` once every resource is configured. The login is a demonstration login: keep the app behind the SSH tunnel, or behind HTTPS (README → *AWS Security Setup*, step 10), and never expose it publicly without real authentication.
 
 ### E8. Test-run once by hand
 
@@ -135,6 +135,8 @@ Local tests passing does **not** prove the EC2 deployment works. Check each item
 - [ ] `curl http://127.0.0.1:8000/health` prints `{"status":"ok"}`
 - [ ] `.venv/bin/python scripts/live_aws_check.py` shows the **role** ARN (`assumed-role/AwsServicesLabRole/...`)
 - [ ] Through the SSH tunnel: login works, and *AWS STS → Who am I?* shows the role
+- [ ] *Check AWS environment* shows the IAM role, the EC2 instance, *Secrets Manager → Verified*, and `TLS in use: yes` for RDS
+- [ ] A submission with a document shows *AWS KMS → Verified*, and `aws s3api head-object` confirms `aws:kms`
 - [ ] An experiment runs, and missing permissions show as friendly messages, not crashes
 - [ ] `sudo reboot`, reconnect, and the service is running again
 - [ ] `ls -l .env` shows `-rw-------` (only you can read it)

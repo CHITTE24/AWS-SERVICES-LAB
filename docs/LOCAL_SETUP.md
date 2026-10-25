@@ -33,16 +33,14 @@ pip install -r requirements-dev.txt
 copy .env.example .env
 ```
 
-Then fill in two secrets:
+The copied file works as it is (local mode, SQLite, no AWS resources). Optionally, add a session secret so you stay logged in when the app restarts:
 
 ```powershell
-# a) Login password hash. Type your chosen password twice (at least 12 characters):
-python scripts/make_password_hash.py
-#    Paste the printed ADMIN_PASSWORD_HASH=... line into .env
-
-# b) Session secret: prints a long random value. Paste it after SESSION_SECRET= in .env
+# Prints a long random value. Paste it after SESSION_SECRET= in .env
 python -c "import secrets; print(secrets.token_hex(32))"
 ```
+
+There is no password to configure. The login is a **demonstration login** that accepts any non-empty username and password (see README).
 
 `.env` is listed in `.gitignore`, so it is never committed.
 
@@ -52,12 +50,12 @@ python -c "import secrets; print(secrets.token_hex(32))"
 python -m uvicorn main:app --reload
 ```
 
-- Open **http://127.0.0.1:8000** and log in with `ADMIN_USERNAME` and your password.
+- Open **http://127.0.0.1:8000** and log in with any username and password. You land on **Welcome to AWS Service Lab**.
 - `--reload` restarts the app automatically whenever you save a Python file.
 - Stop it with **Ctrl+C**.
 - Health check: http://127.0.0.1:8000/health should show `{"status":"ok"}`.
 
-The app runs without AWS credentials. Pages that call AWS then show a clear "No AWS credentials" message.
+The app runs without AWS credentials or resources. Unconfigured services on the lab form are shown as **Simulated**, and dashboard pages that call AWS show a clear "No AWS credentials" message.
 
 ## 5. Run the automated tests
 
@@ -89,7 +87,8 @@ Never put access keys in `.env`, in the code, or in comments.
 |---|---|
 | `ModuleNotFoundError: No module named 'fastapi'` | The virtual environment is not active. Run `.venv\Scripts\Activate.ps1`. |
 | `ModuleNotFoundError: No module named 'core'` | Run commands from the project folder, not from inside a subfolder. |
-| Login always fails | Check that `ADMIN_PASSWORD_HASH` in `.env` starts with `pbkdf2_sha256:`, then restart the app. |
+| Login returns to the login page | `SESSION_HTTPS_ONLY=true` while browsing over plain `http://`: the browser drops the Secure cookie. Set it to `false` locally. |
+| "Please enter both a username and a password" | One of the login fields was empty. Any non-empty values work. |
 | Logged out after every restart | `SESSION_SECRET` is empty in `.env`. |
 | "No AWS credentials were found" | Run `aws configure`, or set `AWS_PROFILE` in `.env`. |
 | "Permission denied for ListBuckets" | Your IAM identity lacks that permission. See CODE_CUSTOMIZATION_GUIDE.md §13. |

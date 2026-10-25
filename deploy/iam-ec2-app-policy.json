@@ -1,0 +1,48 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "UploadDocumentsToLabBucket",
+      "Effect": "Allow",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::YOUR_BUCKET_NAME/submissions/*"
+    },
+    {
+      "Sid": "EncryptUploadsWithLabKmsKeyViaS3Only",
+      "Effect": "Allow",
+      "Action": "kms:GenerateDataKey",
+      "Resource": "arn:aws:kms:YOUR_REGION:YOUR_ACCOUNT_ID:key/YOUR_KMS_KEY_ID",
+      "Condition": { "StringEquals": { "kms:ViaService": "s3.YOUR_REGION.amazonaws.com" } }
+    },
+    {
+      "Sid": "ReadOnlyTheLabSecret",
+      "Effect": "Allow",
+      "Action": "secretsmanager:GetSecretValue",
+      "Resource": "arn:aws:secretsmanager:YOUR_REGION:YOUR_ACCOUNT_ID:secret:YOUR_SECRET_NAME-??????"
+    },
+    {
+      "Sid": "InvokeTheSubmissionProcessor",
+      "Effect": "Allow",
+      "Action": "lambda:InvokeFunction",
+      "Resource": "arn:aws:lambda:YOUR_REGION:YOUR_ACCOUNT_ID:function:YOUR_FUNCTION_NAME"
+    },
+    {
+      "Sid": "OptionalPublishToLabTopic",
+      "Effect": "Allow",
+      "Action": "sns:Publish",
+      "Resource": "arn:aws:sns:YOUR_REGION:YOUR_ACCOUNT_ID:YOUR_TOPIC_NAME"
+    },
+    {
+      "Sid": "OptionalSendToLabQueue",
+      "Effect": "Allow",
+      "Action": "sqs:SendMessage",
+      "Resource": "arn:aws:sqs:YOUR_REGION:YOUR_ACCOUNT_ID:YOUR_QUEUE_NAME"
+    },
+    {
+      "Sid": "OptionalAppLogsToCloudWatch",
+      "Effect": "Allow",
+      "Action": ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"],
+      "Resource": "arn:aws:logs:YOUR_REGION:YOUR_ACCOUNT_ID:log-group:/aws-services-lab/*"
+    }
+  ]
+}

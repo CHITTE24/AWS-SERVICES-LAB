@@ -6,3 +6,4 @@ python-multipart>=0.0.9 # Lets FastAPI read HTML form submissions.
 itsdangerous>=2.2       # Signs the login session cookie so it cannot be forged.
 boto3>=1.34             # The official AWS SDK for Python.
 python-dotenv>=1.0      # Loads settings from the .env file into environment variables.
+psycopg[binary]>=3.2    # PostgreSQL driver, used only when DATABASE_BACKEND=postgres (Amazon RDS).

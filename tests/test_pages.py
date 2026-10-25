@@ -4,7 +4,8 @@ from repositories.history_repository import list_runs
 
 
 def test_dashboard_lists_services(logged_in_client):
-    response = logged_in_client.get("/")
+    # The services dashboard moved from "/" to "/services" ("/" is now the lab form).
+    response = logged_in_client.get("/services")
     assert "Amazon S3" in response.text
     assert "Read-only mode" in response.text
 

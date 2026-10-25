@@ -1,4 +1,7 @@
-"""Creates a password hash for ADMIN_PASSWORD_HASH in .env.
+"""Creates a password hash (format described in auth/passwords.py).
+
+NOTE: the current demonstration login (auth/access.py) accepts any non-empty password and does NOT use
+this hash. The script and auth/passwords.py are kept for when you add real password checking.
 
 Usage (from the project folder, with the virtual environment activated):
     python scripts/make_password_hash.py

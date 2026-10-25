@@ -1,5 +1,7 @@
 """Amazon EC2 (virtual servers): read-only instance, security group, and region information."""
 
+import urllib.request  # Talks to the EC2 instance metadata service (no extra library needed).
+
 from core.aws_client import get_client  # Creates Boto3 clients with the app's settings.
 
 
@@ -84,3 +86,31 @@ def list_regions():
     for region in response["Regions"]:
         names.append(region["RegionName"])
     return sorted(names)
+
+
+def get_current_instance():
+    """When the app runs ON an EC2 instance, asks the instance metadata service (IMDSv2) which one it is.
+
+    Returns: {"instance_id": ..., "instance_type": ..., "availability_zone": ...}.
+    Raises an error (quickly, after 1 second) when the app is not running on EC2, for example on your PC.
+    """
+    # The metadata service lives at a special address that only exists inside EC2.
+    base_url = "http://169.254.169.254/latest"
+    # An empty ProxyHandler makes sure the request never goes through a proxy server.
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+    # IMDSv2 step 1: get a short-lived session token (valid for 60 seconds).
+    token_request = urllib.request.Request(f"{base_url}/api/token", method="PUT",
+                                           headers={"X-aws-ec2-metadata-token-ttl-seconds": "60"})
+    token = opener.open(token_request, timeout=1).read().decode()
+
+    def read(path):
+        # IMDSv2 step 2: read one value, sending the token with the request.
+        request = urllib.request.Request(f"{base_url}/meta-data/{path}", headers={"X-aws-ec2-metadata-token": token})
+        return opener.open(request, timeout=1).read().decode()
+
+    return {
+        "instance_id": read("instance-id"),
+        "instance_type": read("instance-type"),
+        "availability_zone": read("placement/availability-zone"),
+    }

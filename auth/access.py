@@ -1,31 +1,29 @@
-"""Decides who may use the dashboard."""
+"""Decides who may use the app.
 
-import hmac  # compare_digest compares text without leaking timing information.
+DEMONSTRATION LOGIN ONLY: any non-empty username and password are accepted.
+Anyone who can reach the app can log in with made-up details, so this is NOT real authentication.
+Never use it to protect sensitive information, and never expose the app publicly like this.
+For real authentication, use something like Amazon Cognito, or the password-hash check in auth/passwords.py.
+"""
 
 from fastapi import Request  # The incoming web request, which carries the session cookie.
-
-from auth.passwords import verify_password  # Checks a typed password against the stored hash.
-from core.config import get_settings  # Reads ADMIN_USERNAME and ADMIN_PASSWORD_HASH.
 
 
 class LoginRequired(Exception):
     """Raised when a page needs a logged-in user. main.py turns it into a redirect to /login."""
 
 
-def check_credentials(username, password):
-    """Returns True only if both the username and the password are correct."""
-    settings = get_settings()
-    stored_hash = settings["admin_password_hash"]
+def check_login_form(username, password):
+    """Checks the demo login form.
 
-    # If no password hash is configured, nobody can log in. This is safer than allowing everyone.
-    if not stored_hash.startswith("pbkdf2_sha256:"):
-        return False
-
-    # Checks the username with a timing-safe comparison.
-    username_ok = hmac.compare_digest(username.encode("utf-8"), settings["admin_username"].encode("utf-8"))
-    # Always checks the password too, so a wrong username takes the same time as a wrong password.
-    password_ok = verify_password(password, stored_hash)
-    return username_ok and password_ok
+    Returns: None when both fields are filled in, otherwise a message to show the user.
+    The password is only checked for being non-empty. It is never stored, logged, or sent anywhere.
+    """
+    if not username.strip() or not password.strip():
+        return "Please enter both a username and a password."
+    if len(username.strip()) > 100:
+        return "The username must be 100 characters or fewer."
+    return None
 
 
 def require_login(request: Request):

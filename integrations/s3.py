@@ -60,3 +60,30 @@ def count_objects(bucket_name, region=None, max_objects=1000):
         # True when the bucket has more objects than were counted.
         "more_objects_exist": response.get("IsTruncated", False),
     }
+
+
+def upload_document(bucket_name, object_key, content, content_type, kms_key_arn):
+    """Uploads one private document, encrypted with SSE-KMS (server-side encryption with an AWS KMS key).
+
+    bucket_name / object_key: where to store the file. The key is the file's "path" inside the bucket.
+    content: the file's bytes.
+    content_type: for example "application/pdf".
+    kms_key_arn: the customer-managed KMS key that S3 must use to encrypt the file.
+    Returns: what S3 reports it actually did, so the caller can VERIFY the encryption.
+    """
+    s3 = get_client("s3")
+    # No ACL is sent, so the object stays private (only your account's IAM identities can read it).
+    response = s3.put_object(
+        Bucket=bucket_name,
+        Key=object_key,
+        Body=content,
+        ContentType=content_type,
+        ServerSideEncryption="aws:kms",  # Ask S3 to encrypt with KMS ...
+        SSEKMSKeyId=kms_key_arn,  # ... using exactly this key.
+    )
+    return {
+        # S3 answers with the encryption it applied. "aws:kms" means SSE-KMS.
+        "encryption": response.get("ServerSideEncryption", ""),
+        # The ARN of the KMS key S3 used.
+        "kms_key_id": response.get("SSEKMSKeyId", ""),
+    }

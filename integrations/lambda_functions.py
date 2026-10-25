@@ -1,9 +1,16 @@
-"""AWS Lambda (serverless functions): read-only function list.
+"""AWS Lambda (serverless functions): function list, and running the submission processor.
 
 This file is not named "lambda.py" because "lambda" is a reserved word in Python.
 """
 
-from core.aws_client import get_client  # Creates Boto3 clients with the app's settings.
+import json  # The Lambda event and answer are JSON text.
+import logging  # Records Lambda errors in logs/app.log.
+
+from botocore.config import Config  # Used to switch off automatic retries for one call.
+
+from core.aws_client import CLIENT_CONFIG, get_client  # Creates Boto3 clients with the app's settings.
+
+logger = logging.getLogger(__name__)
 
 
 def list_functions(region=None):
@@ -26,3 +33,30 @@ def list_functions(region=None):
                 "last_modified": function.get("LastModified", ""),
             })
     return functions
+
+
+# The submission processor sends an email, so a retry could send it twice. max_attempts=1 means
+# "never retry automatically". read_timeout gives the function up to 30 seconds to answer.
+SINGLE_ATTEMPT_CONFIG = CLIENT_CONFIG.merge(Config(retries={"max_attempts": 1, "mode": "standard"},
+                                                   read_timeout=30))
+
+
+def invoke_submission_processor(function_name, event):
+    """Runs the submission-processing Lambda function and waits for its answer.
+
+    function_name: the function name or ARN (LAMBDA_FUNCTION_NAME in .env).
+    event: a small dictionary with the submission ID and details. Never the document itself.
+    Returns: the dictionary the function returned, for example {"processing_status": "Success", ...}.
+    """
+    lambda_client = get_client("lambda", config=SINGLE_ATTEMPT_CONFIG)
+    # "RequestResponse" waits for the function to finish, so the page can show a VERIFIED result.
+    response = lambda_client.invoke(FunctionName=function_name, InvocationType="RequestResponse",
+                                    Payload=json.dumps(event).encode("utf-8"))
+    answer = json.loads(response["Payload"].read() or b"{}")
+
+    # FunctionError is set when the function's code crashed. Its details stay in the logs.
+    if response.get("FunctionError"):
+        logger.warning("Lambda %s failed: %s", function_name, answer.get("errorMessage"))
+        raise RuntimeError(f"The Lambda function failed ({answer.get('errorType', 'unknown error')}). "
+                           "See its CloudWatch logs.")
+    return answer

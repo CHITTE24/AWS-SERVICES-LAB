@@ -1,0 +1,21 @@
+{
+  "_comment": "ADD these statements to the KMS key policy. Do NOT remove the default 'Enable IAM User Permissions' statement (root account), or you can lock everyone out of the key. Replace every YOUR_... placeholder.",
+  "Statement": [
+    {
+      "Sid": "AllowLabAppToEncryptS3UploadsOnly",
+      "Effect": "Allow",
+      "Principal": { "AWS": "arn:aws:iam::YOUR_ACCOUNT_ID:role/AwsServicesLabRole" },
+      "Action": "kms:GenerateDataKey",
+      "Resource": "*",
+      "Condition": { "StringEquals": { "kms:ViaService": "s3.YOUR_REGION.amazonaws.com" } }
+    },
+    {
+      "Sid": "AllowReadersToDecryptS3ObjectsOnly_OPTIONAL",
+      "Effect": "Allow",
+      "Principal": { "AWS": "arn:aws:iam::YOUR_ACCOUNT_ID:role/YOUR_READER_ROLE" },
+      "Action": "kms:Decrypt",
+      "Resource": "*",
+      "Condition": { "StringEquals": { "kms:ViaService": "s3.YOUR_REGION.amazonaws.com" } }
+    }
+  ]
+}

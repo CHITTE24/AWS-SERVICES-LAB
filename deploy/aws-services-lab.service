@@ -14,6 +14,10 @@ User=ec2-user
 WorkingDirectory=/home/ec2-user/aws-services-lab
 # Listens only on 127.0.0.1 (the server itself). Reach it through an SSH tunnel (see the docs).
 ExecStart=/home/ec2-user/aws-services-lab/.venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8000
+# Behind an HTTPS Application Load Balancer, use this line INSTEAD (README: AWS Security Setup, step 10).
+# --forwarded-allow-ips trusts the ALB's X-Forwarded-Proto header, so the app knows the browser used HTTPS.
+# Use your VPC's CIDR range, and allow port 8000 in the instance security group ONLY from the ALB's security group.
+#ExecStart=/home/ec2-user/aws-services-lab/.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=10.0.0.0/16
 # Restart automatically if the app crashes, after waiting 5 seconds.
 Restart=on-failure
 RestartSec=5

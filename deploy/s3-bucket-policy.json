@@ -1,0 +1,33 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DenyAnyRequestWithoutHttps",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:*",
+      "Resource": ["arn:aws:s3:::YOUR_BUCKET_NAME", "arn:aws:s3:::YOUR_BUCKET_NAME/*"],
+      "Condition": { "Bool": { "aws:SecureTransport": "false" } }
+    },
+    {
+      "Sid": "DenyUploadsNotUsingSseKms",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::YOUR_BUCKET_NAME/*",
+      "Condition": { "StringNotEquals": { "s3:x-amz-server-side-encryption": "aws:kms" } }
+    },
+    {
+      "Sid": "DenyUploadsWithAnyOtherKmsKey",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::YOUR_BUCKET_NAME/*",
+      "Condition": {
+        "StringNotEqualsIfExists": {
+          "s3:x-amz-server-side-encryption-aws-kms-key-id": "arn:aws:kms:YOUR_REGION:YOUR_ACCOUNT_ID:key/YOUR_KMS_KEY_ID"
+        }
+      }
+    }
+  ]
+}

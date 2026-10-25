@@ -19,11 +19,12 @@ CLIENT_CONFIG = Config(
 )
 
 
-def get_client(service_name, region=None):
+def get_client(service_name, region=None, config=CLIENT_CONFIG):
     """Creates a Boto3 client for one AWS service.
 
     service_name: the Boto3 name of the service, for example "s3", "ec2", or "iam".
     region: an AWS region such as "eu-west-1". If empty, the default region from settings is used.
+    config: timeouts and retries. Most callers keep the default CLIENT_CONFIG.
     Returns: a Boto3 client object whose methods call the AWS API.
     """
     # Falls back to the configured default region when the caller did not choose one.
@@ -31,7 +32,7 @@ def get_client(service_name, region=None):
         region = get_settings()["aws_region"]
 
     # Creates the client. Boto3 finds the credentials automatically (see the top of this file).
-    return boto3.client(service_name, region_name=region, config=CLIENT_CONFIG)
+    return boto3.client(service_name, region_name=region, config=config)
 
 
 def ensure_writes_allowed():

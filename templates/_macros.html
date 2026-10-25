@@ -77,3 +77,20 @@
   <p class="note">{{ note }}</p>
   {% endfor %}
 {% endmacro %}
+
+{# A coloured status label, for example "Success" (green) or "Failed" (red). The colour comes from style.css. #}
+{% macro status_badge(status) %}
+  <span class="badge badge-{{ status | lower | replace(' ', '-') }}">{{ status }}</span>
+{% endmacro %}
+
+{# The AWS Service Activity table: one row per step (format described in experiments/submission_workflow.py). #}
+{% macro activity_table(rows) %}
+  <div class="table-scroll">
+  <table class="data-table">
+    <tr><th>Service</th><th>Action</th><th>Status</th><th>Details</th></tr>
+    {% for row in rows %}
+    <tr><td>{{ row.service }}</td><td>{{ row.action }}</td><td>{{ status_badge(row.status) }}</td><td>{{ row.detail }}</td></tr>
+    {% endfor %}
+  </table>
+  </div>
+{% endmacro %}

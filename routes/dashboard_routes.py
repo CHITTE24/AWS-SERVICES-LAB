@@ -17,9 +17,10 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-@router.get("/")
+@router.get("/services")
 def dashboard(request: Request, username: str = Depends(require_login)):
-    # The home page: all services grouped by category, plus the 5 most recent runs.
+    # The services dashboard: all services grouped by category, plus the 5 most recent runs.
+    # (The home page "/" is now the lab form in routes/lab_routes.py.)
     context = {"groups": services_by_category(), "recent_runs": list_runs(limit=5)}
     return render(request, "dashboard.html", context)
 

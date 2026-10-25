@@ -15,7 +15,24 @@ Status as of the initial build (v1). Update this file as items are verified.
 - [x] The write-operation safety switch blocks writes by default
 - [x] Run history is saved and displayed
 
+## Lab form, demo login, and security features (v2), verified locally
+
+- [x] 101 automated tests pass (`python -m pytest`), including the 46 original tests (3 login tests rewritten for the demo login, 1 dashboard test moved to `/services`)
+- [x] Started with Uvicorn on localhost: any non-empty login works, an empty field is rejected, logout works
+- [x] A real local submission with a CSV document: redirect to the result, statuses Simulated/Success, mobile `01234` kept, a resubmit did not duplicate, a 5 MB + 1 byte file was rejected
+- [x] The login password never appears in the page, the session cookie, or `logs/app.log` (test)
+- [x] S3 SSE-KMS upload and verification, Secrets Manager retrieval and caching, SNS/SQS, and SES in the Lambda handler, against **moto fakes only**
+- [x] The RDS connection takes its password from Secrets Manager in aws mode and fails safely without it (tested with a fake driver, not a real database)
+
 ## Not yet verified (needs you)
+
+- [ ] **Real S3 + KMS:** an upload shows *AWS KMS → Verified*; `head-object` confirms `aws:kms` with your key
+- [ ] **Real RDS PostgreSQL:** `scripts/init_database.py` succeeds on EC2; *Test connection* shows `TLS in use: yes`
+- [ ] **Real Secrets Manager:** *Check AWS environment* shows *Verified*
+- [ ] **Real Lambda + SES:** a confirmation email arrives (SES sandbox: recipient verified)
+- [ ] **HTTPS:** ALB + ACM certificate, HTTP→HTTPS redirect, Security Configuration shows *Verified*
+- [ ] Optional SNS/SQS against real resources
+- [ ] The S3 bucket policy in `deploy/s3-bucket-policy.json` (if you apply it) blocks a plain upload
 
 - [ ] **Real AWS account:** run `python scripts/live_aws_check.py`, then try each service page. *(Not done: no credentials configured, and live tests need your explicit request.)*
 - [ ] Real IAM permission errors display correctly. Try it with an identity that lacks one permission.
@@ -27,10 +44,11 @@ Status as of the initial build (v1). Update this file as items are verified.
 
 ## Known limitations and possible next steps
 
-- Single admin user. There is no user management.
+- **Demonstration login**: any non-empty username and password are accepted. This is not authentication.
+- If the S3 upload succeeds but the database save fails, the uploaded object stays in S3 without a database record (clean it up by hand).
+- Two exactly simultaneous submissions of the same form can race past the duplicate check. The second one then fails on the primary key, and only one record is kept. The Submit button is disabled after one click to make this unlikely.
 - No CSRF tokens. Forms rely on the `SameSite=Lax` session cookie, which blocks cross-site form posts in modern browsers.
-- Login throttling is only a 1-second delay on failure, with no lockout.
-- Plain HTTP. On EC2, use the SSH tunnel (encrypted). For public access, add HTTPS, for example an Application Load Balancer with an ACM certificate, or nginx with Let's Encrypt.
+- Plain HTTP by default. On EC2, use the SSH tunnel (encrypted), or the ALB + ACM setup in README → *AWS Security Setup*, step 10. TLS has not been verified on a real deployment.
 - SQS and SNS are catalog entries with no operations yet (good practice exercises: see CODE_CUSTOMIZATION_GUIDE §3).
 - `count_objects` samples at most 1000 objects per bucket, by design, to limit cost.
 - The test run shows a deprecation warning from Starlette about `httpx` (it suggests `httpx2`). It is harmless today and can be revisited when upgrading libraries.

@@ -16,7 +16,8 @@ from auth.access import LoginRequired  # Raised by pages that need a logged-in u
 from core.config import PROJECT_ROOT, get_settings  # Settings from .env.
 from core.logging_setup import setup_logging  # Log configuration.
 from repositories.history_repository import create_tables  # Prepares the SQLite database.
-from routes import auth_routes, dashboard_routes, experiment_routes, history_routes  # The pages.
+from repositories.submission_repository import create_submissions_table, using_rds  # The lab_submissions table.
+from routes import auth_routes, dashboard_routes, experiment_routes, history_routes, lab_routes  # The pages.
 
 settings = get_settings()
 setup_logging(settings["log_level"], settings["log_file"])
@@ -24,6 +25,10 @@ logger = logging.getLogger(__name__)
 
 # Creates the history table the first time the app runs. Later runs leave it unchanged.
 create_tables()
+# The local SQLite submissions table is created automatically. The RDS table is created once,
+# by hand, with "python scripts/init_database.py", so starting the app never needs RDS to be reachable.
+if not using_rds():
+    create_submissions_table()
 
 # docs_url=None and redoc_url=None turn off FastAPI's automatic API documentation pages, which this app does not need.
 app = FastAPI(title=settings["app_title"], docs_url=None, redoc_url=None)
@@ -34,7 +39,9 @@ if not session_secret:
     logger.warning("SESSION_SECRET is not set. Using a temporary secret (logins reset on restart).")
     session_secret = secrets.token_hex(32)
 
-# Stores the login in a signed cookie. same_site="lax" stops other websites from submitting our forms as you.
+# Stores the login in a signed cookie. The cookie is always HttpOnly (JavaScript cannot read it).
+# same_site="lax" stops other websites from submitting our forms as you.
+# https_only=True adds the "Secure" flag, so the browser sends the cookie only over HTTPS.
 app.add_middleware(
     SessionMiddleware,
     secret_key=session_secret,
@@ -48,6 +55,7 @@ app.mount("/static", StaticFiles(directory=str(PROJECT_ROOT / "static")), name="
 
 # Connects each group of pages to the app.
 app.include_router(auth_routes.router)
+app.include_router(lab_routes.router)
 app.include_router(dashboard_routes.router)
 app.include_router(experiment_routes.router)
 app.include_router(history_routes.router)
@@ -66,6 +74,10 @@ def health():
     return {"status": "ok"}
 
 
-if not settings["admin_password_hash"]:
-    logger.warning("ADMIN_PASSWORD_HASH is not set, so nobody can log in. See docs/LOCAL_SETUP.md.")
-logger.info("AWS Services Lab started. Default region: %s", settings["aws_region"])
+logger.warning("DEMO LOGIN is active: any non-empty username and password are accepted. "
+               "Do not expose this app publicly or use it for sensitive data.")
+if settings["app_mode"] not in ("local", "aws"):
+    logger.warning("APP_MODE must be 'local' or 'aws'. '%s' is treated like aws mode.", settings["app_mode"])
+if settings["app_mode"] != "local" and not settings["session_https_only"]:
+    logger.warning("APP_MODE=aws but SESSION_HTTPS_ONLY=false. Serve the app over HTTPS and set it to true.")
+logger.info("AWS Services Lab started. Mode: %s. Default region: %s", settings["app_mode"], settings["aws_region"])

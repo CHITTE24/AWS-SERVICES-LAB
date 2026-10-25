@@ -9,21 +9,23 @@ import tempfile  # Creates a throwaway folder for the test database.
 
 import pytest  # The test framework.
 
-from auth.passwords import hash_password  # Creates the test user's password hash.
-
 # A throwaway folder for this test run.
 TEST_FOLDER = tempfile.mkdtemp(prefix="aws-lab-tests-")
+# The demo login accepts any non-empty password. This one is used to prove it is never stored or shown.
 TEST_PASSWORD = "test-password-123"
 
 # --- App settings for tests ---
 os.environ["LAB_SKIP_DOTENV"] = "1"  # Ignores your personal .env file.
 os.environ["SESSION_SECRET"] = "test-session-secret"
-os.environ["ADMIN_USERNAME"] = "admin"
-# A low iteration count keeps tests fast. Real hashes use 600,000.
-os.environ["ADMIN_PASSWORD_HASH"] = hash_password(TEST_PASSWORD, iterations=1000)
 os.environ["DATABASE_PATH"] = os.path.join(TEST_FOLDER, "test.db")
 os.environ["ALLOW_WRITE_OPERATIONS"] = "false"
 os.environ["AWS_REGION"] = "us-east-1"
+os.environ["APP_MODE"] = "local"
+os.environ["DATABASE_BACKEND"] = "sqlite"
+# Tests start with NO AWS resources configured. Individual tests add them with monkeypatch.setenv.
+for name in ("S3_BUCKET_NAME", "S3_KMS_KEY_ARN", "LAMBDA_FUNCTION_NAME", "SNS_TOPIC_ARN", "SQS_QUEUE_URL",
+             "AWS_SECRETS_MANAGER_SECRET_NAME", "DB_HOST", "DB_PASSWORD", "SESSION_HTTPS_ONLY"):
+    os.environ.pop(name, None)
 
 # --- Fake AWS credentials, so a mistake can never reach a real account ---
 os.environ["AWS_ACCESS_KEY_ID"] = "testing"
@@ -39,7 +41,16 @@ os.environ.pop("AWS_PROFILE", None)  # Removes AWS_PROFILE if your shell had one
 from fastapi.testclient import TestClient  # noqa: E402  Sends fake browser requests to the app.
 from moto import mock_aws  # noqa: E402  Replaces AWS with an in-memory fake.
 
+from core import secret_store  # noqa: E402  Its cache is cleared between tests.
 from main import app  # noqa: E402  The web application under test.
+
+
+@pytest.fixture(autouse=True)
+def clear_secret_cache():
+    # autouse=True runs this for every test, so a secret cached by one test never leaks into another.
+    secret_store.clear_cache()
+    yield
+    secret_store.clear_cache()
 
 
 @pytest.fixture
@@ -57,7 +68,7 @@ def client():
 
 @pytest.fixture
 def logged_in_client(client):
-    # A fake browser that has logged in with the test password.
-    response = client.post("/login", data={"username": "admin", "password": TEST_PASSWORD})
-    assert response.status_code == 200  # 200 means the login redirect led to the dashboard.
+    # A fake browser that has logged in. The demo login accepts any non-empty username and password.
+    response = client.post("/login", data={"username": "student", "password": TEST_PASSWORD})
+    assert response.status_code == 200  # 200 means the login redirect led to the main page.
     return client

@@ -70,3 +70,16 @@ form.inline { display: inline; }
 .badge-success { background: var(--success); }
 .badge-warning { background: var(--warning); }
 .badge-error { background: var(--error); }
+
+/* Extra status badges for the lab page (see the status_badge macro in templates/_macros.html) */
+.badge-verified, .badge-sent, .badge-configured { background: var(--success); }
+.badge-failed { background: var(--error); }
+.badge-simulated, .badge-unknown, .badge-pending { background: var(--warning); }
+.badge-skipped, .badge-not-configured { background: var(--muted); }
+
+/* The lab form: a message beside each invalid field, and a larger Submit button */
+.field-error { display: block; color: var(--error); font-weight: 600; font-size: 0.85rem; margin-top: 4px; }
+input[type=file] { border-style: dashed; padding: 12px; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0 16px; }
+.big-button { font-size: 1.1rem; padding: 12px 32px; margin-top: 8px; }
+.mode-banner { padding: 8px 12px; border-radius: 6px; background: #e6fffa; margin-bottom: 16px; }

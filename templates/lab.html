@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge, activity_table %}
+{% block title %}Welcome · {{ app_title }}{% endblock %}
+{% block content %}
+<h1>Welcome to AWS Service Lab</h1>
+<p>This application demonstrates how AWS compute, storage, databases, serverless functions, notifications, IAM, and monitoring services work together.</p>
+
+{# Tells the viewer whether unconfigured AWS services are simulated (local) or must work (aws). #}
+<div class="mode-banner small">
+  {% if app_mode == "local" %}
+    <strong>Local mode.</strong> AWS services that are not configured are <strong>Simulated</strong>: nothing is sent to AWS.
+  {% else %}
+    <strong>AWS mode.</strong> Every AWS service must be configured. Missing settings are reported as <strong>Failed</strong>.
+  {% endif %}
+  Submissions are saved to: <strong>{{ database_label }}</strong>.
+</div>
+
+{% if errors.page %}<div class="alert alert-error">{{ errors.page }}</div>{% endif %}
+{% if errors and not errors.page %}<div class="alert alert-error">Please correct the highlighted fields.</div>{% endif %}
+
+<section class="card">
+  <h2>Your details</h2>
+  {# enctype="multipart/form-data" is required for file uploads. "run-form" makes static/app.js disable the button after one click. #}
+  <form method="post" action="/submit" enctype="multipart/form-data" class="run-form">
+    {# A random ID for this form. If the same form is submitted twice, the second copy is ignored. #}
+    <input type="hidden" name="submission_id" value="{{ submission_id }}">
+    <div class="form-grid">
+      {# Each entry: (field name, label, input type, browser hint). #}
+      {% for name, label, type, extra in [
+           ("username", "Username", "text", 'maxlength="50" autocomplete="off"'),
+           ("first_name", "First name", "text", 'maxlength="50" autocomplete="given-name"'),
+           ("last_name", "Last name", "text", 'maxlength="50" autocomplete="family-name"'),
+           ("mobile_number", "Mobile number (exactly 5 digits)", "text", 'inputmode="numeric" pattern="[0-9]{5}" maxlength="5"'),
+           ("email", "Email address", "email", 'maxlength="254" autocomplete="email"')] %}
+      <label>
+        {{ label }} *
+        <input name="{{ name }}" type="{{ type }}" value="{{ values.get(name, '') }}" required {{ extra | safe }}>
+        {% if errors.get(name) %}<span class="field-error">{{ errors.get(name) }}</span>{% endif %}
+      </label>
+      {% endfor %}
+      <label>
+        Upload a document (optional, maximum {{ max_megabytes }} MB)
+        <input name="document" type="file" accept=".pdf,.txt,.docx,.csv">
+        <span class="muted small">PDF, TXT, DOCX, or CSV. Stored privately in Amazon S3 with KMS encryption.</span>
+        {% if errors.get("document") %}<span class="field-error">{{ errors.get("document") }}</span>{% endif %}
+      </label>
+    </div>
+    <button type="submit" class="big-button">Submit</button>
+  </form>
+</section>
+
+{% if result %}
+<section class="card">
+  <h2>Results</h2>
+  <table class="data-table">
+    <tr><th>Submission ID</th><td>{{ result.id }}</td></tr>
+    <tr><th>Submitted at (UTC)</th><td>{{ result.submitted_at }}</td></tr>
+    <tr><th>Username</th><td>{{ result.username }}</td></tr>
+    <tr><th>First name</th><td>{{ result.first_name }}</td></tr>
+    <tr><th>Last name</th><td>{{ result.last_name }}</td></tr>
+    <tr><th>Mobile number</th><td>{{ result.mobile_number }}</td></tr>
+    <tr><th>Email address</th><td>{{ result.email }}</td></tr>
+    <tr><th>Document</th><td>{{ result.document_name or "No document uploaded." }}</td></tr>
+    <tr><th>S3 upload</th><td>{{ status_badge(result.upload_status) }}</td></tr>
+    <tr><th>Database save</th><td>{{ status_badge(result.database_status) }} <span class="muted small">{{ database_label }}</span></td></tr>
+    <tr><th>Lambda processing</th><td>{{ status_badge(result.processing_status) }}</td></tr>
+    <tr><th>Email notification</th><td>{{ status_badge(result.email_status) }}
+        {% if result.email_status == "Sent" %}<span class="muted small">Accepted by Amazon SES. Delivery to the inbox is not confirmed.</span>{% endif %}</td></tr>
+  </table>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>AWS Service Activity</h2>
+  {% if result %}
+    <h3>This submission</h3>
+    {{ activity_table(result.activity) }}
+  {% else %}
+    <p class="muted">Submit the form to see each AWS step and its real outcome here.</p>
+  {% endif %}
+
+  <h3>AWS environment</h3>
+  <p class="muted small">Checks the IAM identity, EC2 instance, Secrets Manager secret, database connection, and CloudWatch metrics. Read-only.</p>
+  <form method="post" action="/environment-check" class="run-form">
+    <button type="submit">Check AWS environment</button>
+  </form>
+  {% if checks %}{{ activity_table(checks) }}{% endif %}
+</section>
+
+<section class="card">
+  <h2>Security Configuration</h2>
+  <p class="muted small">"Configured" means a setting is present. "Verified" means a real request proved it. No secret values are shown.</p>
+  <div class="table-scroll">
+  <table class="data-table">
+    <tr><th>Setting</th><th>Status</th><th>Explanation</th></tr>
+    {% for name, status, explanation in security_rows %}
+    <tr><td>{{ name }}</td><td>{{ status_badge(status) }}</td><td>{{ explanation }}</td></tr>
+    {% endfor %}
+  </table>
+  </div>
+</section>
+{% endblock %}
