@@ -136,11 +136,14 @@ def overdue_stages(stages, now):
     return overdue
 
 
-def should_poll(overall, created_at, now, poll_limit_seconds):
-    """Should the browser ask again? Only while something is still in progress, and never forever."""
-    in_progress = overall in (PENDING, RUNNING, RETRYING)
-    age = (now - from_text(created_at)).total_seconds()
-    return in_progress and age < poll_limit_seconds
+def should_poll(overall):
+    """Should the browser ask again? Only while something is still in progress.
+
+    This cannot go on forever: every waiting stage has a deadline, after which it becomes Timed Out.
+    The page itself also stops after WORKFLOW_POLL_LIMIT_SECONDS per page view (a reload resumes).
+    Timed Out does not poll: a late result is shown on the next reload.
+    """
+    return overall in (PENDING, RUNNING, RETRYING)
 
 
 def next_poll_milliseconds(created_at, now):

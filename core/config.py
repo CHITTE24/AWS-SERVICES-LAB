@@ -127,8 +127,8 @@ def get_settings():
         # a late result still updates the stage.
         "workflow_event_deadline_seconds": read_int("WORKFLOW_EVENT_DEADLINE_SECONDS", 120),
         "workflow_processing_deadline_seconds": read_int("WORKFLOW_PROCESSING_DEADLINE_SECONDS", 300),
-        # Cost controls: the browser stops polling after this many seconds, and at most this many REAL
-        # workflows per user per hour (simulated ones are free and not counted).
+        # Cost controls: an open workflow page stops polling after this many seconds (a reload resumes), and
+        # at most this many REAL workflows per user per hour (simulated ones are free and not counted).
         "workflow_poll_limit_seconds": read_int("WORKFLOW_POLL_LIMIT_SECONDS", 300),
         "workflow_max_per_hour": read_int("WORKFLOW_MAX_PER_HOUR", 30),
         # DynamoDB deletes workflow stages after this many days (Time To Live). The local list keeps them.

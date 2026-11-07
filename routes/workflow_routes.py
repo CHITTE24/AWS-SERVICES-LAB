@@ -51,7 +51,7 @@ def show_list(request, username, error=None, status_code=200):
             workflows.append(live_workflow.describe(live_workflow.refresh(meta["workflow_id"])))
         except Exception as problem:
             # For example DynamoDB is unreachable: the row is still listed, with an unknown state.
-            logger.warning("Could not read workflow %s: %s", meta["workflow_id"], problem)
+            logger.warning("Could not read workflow %s: %s", meta["workflow_id"], live_workflow.log_summary(problem))
             workflows.append(dict(meta, overall="Unknown", simulated=meta["mode"] == "simulated"))
     context = {"workflows": workflows, "error": error, "new_workflow_id": live_workflow.new_workflow_id(),
                "scenarios": SCENARIOS, "real_problem": live_workflow.real_workflow_problem(),
@@ -154,6 +154,6 @@ def workflow_status(workflow_id: str, username: str = Depends(require_login)):
     try:
         view = live_workflow.describe(live_workflow.refresh(workflow_id))
     except Exception as problem:
-        logger.warning("Status check failed for workflow %s: %s", workflow_id, problem)
+        logger.warning("Status check failed for workflow %s: %s", workflow_id, live_workflow.log_summary(problem))
         return no_store(JSONResponse({"error": live_workflow.safe_error_detail(problem)}, status_code=503))
     return no_store(JSONResponse(view))

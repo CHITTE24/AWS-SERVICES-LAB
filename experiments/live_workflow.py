@@ -58,6 +58,13 @@ def new_workflow_id():
     return uuid.uuid4().hex
 
 
+def log_summary(error):
+    """What goes into logs/app.log: the error type and AWS error code only, never AWS's message text."""
+    if isinstance(error, ClientError):
+        return f"{type(error).__name__} ({error.response.get('Error', {}).get('Code', 'Unknown')})"
+    return type(error).__name__
+
+
 def safe_error_detail(error):
     """A short, safe text for the page, for example "Access Denied (AccessDenied): ...". Never the raw error."""
     status = classify_error(error)
@@ -148,7 +155,7 @@ def create(workflow_id, owner, mode, scenario, document, now):
     try:
         created = workflow_repository.create_workflow(meta, build_stages(mode, now))
     except Exception as error:
-        logger.warning("Could not create workflow %s: %s", workflow_id, error)
+        logger.warning("Could not create workflow %s: %s", workflow_id, log_summary(error))
         raise WorkflowError("The workflow record could not be saved, so nothing was uploaded. "
                             + safe_error_detail(error)) from None
     return workflow_repository.get_workflow(workflow_id), created
@@ -191,7 +198,7 @@ def run_fastapi_stages(workflow, document):
         put = s3.upload_document(bucket, key, document["content"], document["content_type"], kms_key_arn,
                                  metadata={"workflow-id": workflow["workflow_id"]})
     except Exception as error:
-        logger.warning("Workflow %s: upload failed: %s", workflow["workflow_id"], error)
+        logger.warning("Workflow %s: upload failed: %s", workflow["workflow_id"], log_summary(error))
         update("upload", rules.FAILED, safe_error_detail(error))
         skip_later(("verify", "kms", "event", "lambda"), "Skipped: the upload failed, so there is no object.")
         return
@@ -204,7 +211,7 @@ def run_fastapi_stages(workflow, document):
     try:
         head = s3.head_object(bucket, key)
     except Exception as error:
-        logger.warning("Workflow %s: HeadObject failed: %s", workflow["workflow_id"], error)
+        logger.warning("Workflow %s: HeadObject failed: %s", workflow["workflow_id"], log_summary(error))
         update("verify", rules.FAILED, safe_error_detail(error))
         update("kms", rules.SKIPPED, "Skipped: the object could not be read, so its encryption is unknown.")
         return
@@ -264,7 +271,7 @@ def describe(workflow, now=None):
     """The JSON-friendly view used by the page and the status endpoint. Contains no secrets or raw errors."""
     now = now or rules.utc_now()
     overall = rules.overall_state(workflow["stages"])
-    poll = rules.should_poll(overall, workflow["created_at"], now, get_settings()["workflow_poll_limit_seconds"])
+    poll = rules.should_poll(overall)
     stages = []
     for stage in workflow["stages"]:
         stages.append({
@@ -280,5 +287,7 @@ def describe(workflow, now=None):
         "scenario": workflow.get("scenario"), "file_name": workflow["file_name"], "file_size": workflow["file_size"],
         "created_at": workflow["created_at"], "overall": overall, "stages": stages,
         "poll": poll, "next_poll_ms": rules.next_poll_milliseconds(workflow["created_at"], now) if poll else None,
+        # The page stops asking after this many seconds per page view (cost control). Reloading resumes.
+        "poll_limit_seconds": get_settings()["workflow_poll_limit_seconds"],
         "checked_at": rules.to_text(now),
     }

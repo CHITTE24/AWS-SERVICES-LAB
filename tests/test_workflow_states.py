@@ -73,12 +73,13 @@ def test_overdue_stages_only_waiting_ones_after_their_deadline():
     assert [stage["stage_id"] for stage in rules.overdue_stages(stages, rules.add_seconds(T0, 61))] == ["a"]
 
 
-def test_polling_limits():
+def test_polling_only_while_in_progress():
     created = rules.to_text(T0)
-    assert rules.should_poll(rules.RUNNING, created, rules.add_seconds(T0, 10), 300)
-    assert not rules.should_poll(rules.RUNNING, created, rules.add_seconds(T0, 301), 300)  # Time limit.
-    for finished in (rules.COMPLETED, rules.FAILED, rules.TIMED_OUT, rules.SIMULATED):
-        assert not rules.should_poll(finished, created, rules.add_seconds(T0, 10), 300)
+    for in_progress in (rules.PENDING, rules.RUNNING, rules.RETRYING):
+        assert rules.should_poll(in_progress)
+    # Finished, or Timed Out (a late result is shown on the next reload): no more requests.
+    for finished in (rules.COMPLETED, rules.FAILED, rules.TIMED_OUT, rules.SIMULATED, rules.EXPIRED):
+        assert not rules.should_poll(finished)
     assert rules.next_poll_milliseconds(created, rules.add_seconds(T0, 10)) == 2000
     assert rules.next_poll_milliseconds(created, rules.add_seconds(T0, 61)) == 5000
 

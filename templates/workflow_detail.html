@@ -38,11 +38,13 @@
 {% endif %}
 
 <p class="small"><a href="/workflows/{{ view.workflow_id }}">Reload now</a>
-  · "Timed Out" means no result before the deadline. It is not proof of failure: a late result still updates the stage.</p>
+  · "Timed Out" means no result before the deadline. It is not proof of failure: a late result still updates
+  the stage, and reloading this page shows it.</p>
 <noscript><p class="small">JavaScript is off: reload the page to see updates.</p></noscript>
 
 {# Settings for static/workflow.js: where to ask, and whether and when to ask again. #}
 <div id="workflow-monitor" data-status-url="/workflows/{{ view.workflow_id }}/status"
-     data-poll="{{ 'true' if view.poll else 'false' }}" data-next="{{ view.next_poll_ms or 0 }}"></div>
+     data-poll="{{ 'true' if view.poll else 'false' }}" data-next="{{ view.next_poll_ms or 0 }}"
+     data-limit="{{ view.poll_limit_seconds }}"></div>
 <script src="/static/workflow.js"></script>
 {% endblock %}
