@@ -2,13 +2,17 @@
 
 import logging  # Records errors in logs/app.log.
 import re  # Checks the format of submission IDs.
+import time  # Measures how long the environment check took.
 import uuid  # Creates random submission IDs.
+from datetime import datetime, timezone  # The "Last checked" time.
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse  # Sends the browser to another URL.
 from starlette.concurrency import run_in_threadpool  # Runs slow AWS calls without freezing the web server.
 
 from auth.access import require_login  # Blocks the page unless someone is logged in.
+from core import request_security  # Decides HTTPS from trusted request information only.
+from core.aws_errors import NOT_CONFIGURED, PROBLEM_STATUSES  # Status words.
 from core.config import get_settings  # Reads the configuration for the Security Configuration panel.
 from core.form_checks import MAX_DOCUMENT_BYTES, check_document, validate_submission  # Form checks.
 from core.templates import render  # Renders HTML pages.
@@ -23,59 +27,86 @@ logger = logging.getLogger(__name__)
 SUBMISSION_ID_PATTERN = re.compile(r"[0-9a-f]{32}")
 
 
-def security_configuration(request):
-    """Builds the Security Configuration rows: (setting, status, explanation). No secret values are shown.
+# Shown in the "Connection" column until "Check AWS environment" has been clicked on this page.
+NOT_CHECKED = "Not Checked"
+# Shown in the "In .env" column for rows that are not a setting (for example HTTPS, which depends on the request).
+NOT_A_SETTING = "-"
 
-    "Configured" only means a setting is present. "Verified" means it was proven by a real request.
+
+def connection_from_checks(checks, service, action=""):
+    """Finds the status a real check reported for a service, or "Not Checked" if there is none."""
+    for row in checks or []:
+        if row["service"] == service and row["action"].startswith(action):
+            return row["status"]
+    return NOT_CHECKED
+
+
+def security_configuration(request, checks=None):
+    """Builds the Security Configuration rows: (name, in .env, connection, explanation). No secret values.
+
+    "In .env" (Configured / Not Configured) only says whether a setting is PRESENT. It is never proof.
+    "Connection" is filled in only by a real request: the HTTPS rows by this page request itself,
+    the AWS rows by the "Check AWS environment" button (checks = its rows, or None if not clicked).
     """
     settings = get_settings()
-    https = request.url.scheme == "https"
+
+    def in_env(value):
+        return "Configured" if value else NOT_CONFIGURED
+
+    info = request_security.describe_request(request)
+    https = request_security.https_status(info)
+    cookie = request_security.cookie_status(info)
     rows = [
-        ("HTTPS / TLS for this page", "Verified" if https else "Not Configured",
-         "This page arrived over HTTPS." if https else
-         "This page arrived over plain HTTP. That is fine on your own computer (localhost), "
-         "but a deployed app must be reached through HTTPS (see README: AWS Security Setup)."),
-        ("Secure session cookie", "Configured" if settings["session_https_only"] else "Not Configured",
-         "SESSION_HTTPS_ONLY=true: the login cookie is only sent over HTTPS (it is always HttpOnly and SameSite=Lax)."
-         if settings["session_https_only"] else "SESSION_HTTPS_ONLY=false. Set it to true when the app is served over HTTPS."),
-        # Each row below has two explanations: the first when the setting is filled in, the second when it is empty.
-        ("S3 bucket", "Configured" if settings["s3_bucket_name"] else "Not Configured",
-         "S3_BUCKET_NAME is set. Access is proven only by a successful upload."
+        ("HTTPS / TLS for this page", NOT_A_SETTING, https[0], https[1]),
+        ("Secure session cookie", in_env(settings["session_https_only"]), cookie[0], cookie[1]),
+        # Each AWS row has two explanations: the first when the setting is filled in, the second when it is empty.
+        ("S3 bucket", in_env(settings["s3_bucket_name"]), connection_from_checks(checks, "Amazon S3"),
+         "S3_BUCKET_NAME is set. Connection = HeadBucket proved the bucket exists and is accessible."
          if settings["s3_bucket_name"] else
          "S3_BUCKET_NAME is empty, so documents are not uploaded to S3. Set it after creating the bucket."),
-        ("KMS key reference", "Configured" if settings["s3_kms_key_arn"] else "Not Configured",
-         "S3_KMS_KEY_ARN is set. This alone does NOT prove that objects are encrypted with it."
+        ("KMS key reference", in_env(settings["s3_kms_key_arn"]), connection_from_checks(checks, "AWS KMS"),
+         "S3_KMS_KEY_ARN is set. Connection = DescribeKey read the key; encrypting with it is proven per upload."
          if settings["s3_kms_key_arn"] else
          "S3_KMS_KEY_ARN is empty, so S3 uploads are refused (they must be SSE-KMS encrypted). "
          "Set it to the key ARN after creating the KMS key."),
-        ("SSE-KMS on uploads", "Unknown",
+        ("SSE-KMS on uploads", NOT_A_SETTING, NOT_CHECKED,
          "Verified separately for each upload: see the AWS KMS row in AWS Service Activity."),
-        ("Secrets Manager reference", "Configured" if settings["secret_name"] else "Not Configured",
-         "AWS_SECRETS_MANAGER_SECRET_NAME is set. Use 'Check AWS environment' to verify it can be read."
+        ("Secrets Manager reference", in_env(settings["secret_name"]),
+         connection_from_checks(checks, "AWS Secrets Manager", "Retrieve value"),
+         "AWS_SECRETS_MANAGER_SECRET_NAME is set. Connection = a fresh read succeeded. Values are never shown."
          if settings["secret_name"] else
          "AWS_SECRETS_MANAGER_SECRET_NAME is empty, so no database password is read from Secrets Manager. "
          "Set it to the secret's name or ARN (never the value) after creating the secret."),
     ]
     if submission_repository.using_rds():
         tls_on = settings["db_sslmode"] in ("require", "verify-ca", "verify-full")
-        rows.append(("RDS TLS", "Configured" if tls_on else "Not Configured",
-                     f"DB_SSLMODE={settings['db_sslmode']}. 'Check AWS environment' shows whether TLS is really in use."))
+        rows.append(("RDS TLS", in_env(tls_on), connection_from_checks(checks, "Amazon RDS (PostgreSQL)"),
+                     f"DB_SSLMODE={settings['db_sslmode']}. Connection = a real connection with TLS in use."))
     else:
-        rows.append(("RDS TLS", "Not Configured", "Not applicable: submissions are saved to the local SQLite file."))
+        rows.append(("RDS TLS", NOT_CONFIGURED, NOT_CONFIGURED,
+                     "Not applicable: submissions are saved to the local SQLite file."))
     return rows
 
 
-def show_page(request, values=None, errors=None, result=None, checks=None, status_code=200, submission_id=None):
-    # Renders the main page. Every visit gets a fresh submission ID unless one is passed in (after an error).
+def show_page(request, values=None, errors=None, result=None, checks=None, status_code=200, submission_id=None,
+              checked_at=None):
+    """Renders the main page. Every visit gets a fresh submission ID unless one is passed in (after an error).
+
+    checked_at: text such as "2026-11-08 09:30:12 UTC ...", shown above the environment check results.
+    """
     settings = get_settings()
     context = {
         "values": values or {}, "errors": errors or {}, "result": result, "checks": checks,
         "submission_id": submission_id or uuid.uuid4().hex,
         "app_mode": settings["app_mode"], "database_label": submission_repository.backend_label(),
-        "security_rows": security_configuration(request),
+        "security_rows": security_configuration(request, checks), "checked_at": checked_at,
         "max_megabytes": MAX_DOCUMENT_BYTES // (1024 * 1024),
     }
-    return render(request, "lab.html", context, status_code=status_code)
+    response = render(request, "lab.html", context, status_code=status_code)
+    # "no-store": the browser must never show a saved copy of this page (for example with the Back button),
+    # because its connection statuses would be out of date.
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @router.get("/")
@@ -144,7 +175,15 @@ async def submit(request: Request, username: str = Depends(require_login)):
 @router.post("/environment-check")
 async def run_environment_check(request: Request, username: str = Depends(require_login)):
     # Runs the read-only AWS environment checks and saves them to the run history page.
-    checks = await run_in_threadpool(environment_check.run)
-    status = "error" if any(row["status"] == "Failed" for row in checks) else "success"
+    # Every click runs every check again: nothing is reused from an earlier click.
+    started = time.monotonic()
+    checked_at = datetime.now(timezone.utc)
+    # How THIS request arrived, for the HTTPS check (see core/request_security.py).
+    request_info = request_security.describe_request(request)
+    checks = await run_in_threadpool(environment_check.run, request_info)
+    seconds = time.monotonic() - started
+    status = "error" if any(row["status"] in PROBLEM_STATUSES for row in checks) else "success"
     save_run("experiment", "AWS environment check", {}, status, checks, username)
-    return show_page(request, checks=checks)
+    checked_text = (f"{checked_at:%Y-%m-%d %H:%M:%S} UTC, region {get_settings()['aws_region']}, "
+                    f"took {seconds:.1f} s")
+    return show_page(request, checks=checks, checked_at=checked_text)

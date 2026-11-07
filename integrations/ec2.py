@@ -91,7 +91,7 @@ def list_regions():
 def get_current_instance():
     """When the app runs ON an EC2 instance, asks the instance metadata service (IMDSv2) which one it is.
 
-    Returns: {"instance_id": ..., "instance_type": ..., "availability_zone": ...}.
+    Returns: {"instance_id": ..., "instance_type": ..., "availability_zone": ..., "region": ...}.
     Raises an error (quickly, after 1 second) when the app is not running on EC2, for example on your PC.
     """
     # The metadata service lives at a special address that only exists inside EC2.
@@ -113,4 +113,13 @@ def get_current_instance():
         "instance_id": read("instance-id"),
         "instance_type": read("instance-type"),
         "availability_zone": read("placement/availability-zone"),
+        "region": read("placement/region"),  # The region the instance really runs in.
     }
+
+
+def describe_instance(instance_id, region=None, config=None):
+    """Reads ONE instance's details (needs ec2:DescribeInstances). Returns its name tag and state."""
+    ec2 = get_client("ec2", region, config=config)
+    response = ec2.describe_instances(InstanceIds=[instance_id])
+    instance = response["Reservations"][0]["Instances"][0]
+    return {"name": get_name_tag(instance.get("Tags")), "state": instance["State"]["Name"]}

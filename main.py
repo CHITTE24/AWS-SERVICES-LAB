@@ -78,6 +78,10 @@ logger.warning("DEMO LOGIN is active: any non-empty username and password are ac
                "Do not expose this app publicly or use it for sensitive data.")
 if settings["app_mode"] not in ("local", "aws"):
     logger.warning("APP_MODE must be 'local' or 'aws'. '%s' is treated like aws mode.", settings["app_mode"])
+if settings["trust_proxy_headers"]:
+    # Only safe behind your own load balancer, with uvicorn's --forwarded-allow-ips limited to it.
+    logger.warning("TRUST_PROXY_HEADERS=true: X-Forwarded-Proto is accepted when uvicorn trusts the sender. "
+                   "Start uvicorn with --proxy-headers --forwarded-allow-ips=<load balancer subnets>.")
 if settings["app_mode"] != "local" and not settings["session_https_only"]:
     logger.warning("APP_MODE=aws but SESSION_HTTPS_ONLY=false. Serve the app over HTTPS and set it to true.")
 logger.info("AWS Services Lab started. Mode: %s. Default region: %s", settings["app_mode"], settings["aws_region"])

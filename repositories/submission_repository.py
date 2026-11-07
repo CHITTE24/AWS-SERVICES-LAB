@@ -162,6 +162,59 @@ def describe_database_error(error):
             "The technical details are in logs/app.log.")
 
 
+def check_sqlite():
+    """Opens the local SQLite file and runs SELECT 1. Used by "Check AWS environment".
+
+    The SQLite file always holds the run history, and also the submissions when DATABASE_BACKEND=sqlite.
+    """
+    path = get_settings()["database_path"]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(path)
+    try:
+        connection.execute("SELECT 1")
+    finally:
+        connection.close()
+    return path
+
+
+def classify_database_error(error):
+    """Turns a database connection error into (status, safe message) for "Check AWS environment".
+
+    PostgreSQL error texts can include the RDS host name, so only a short explanation is shown.
+    The full error is in logs/app.log.
+    """
+    # Imported here to avoid a circular import (core.aws_errors does not import this file).
+    from core.aws_errors import (ACCESS_DENIED, CONFIGURATION_ERROR, NOT_FOUND, TIMED_OUT, UNAVAILABLE,
+                                 classify_error)
+
+    if isinstance(error, ImportError):
+        return CONFIGURATION_ERROR, "The PostgreSQL driver (psycopg) is not installed: pip install -r requirements.txt."
+    if isinstance(error, ValueError):  # Our own messages ("DB_HOST is not set") or a SecretError.
+        return classify_error(error), str(error)
+
+    text = str(error).lower()
+    # Each entry: (words in the driver's error text, status, what to show the user).
+    known_problems = [
+        (("timeout",), TIMED_OUT,
+         "RDS did not answer within 5 seconds. Check that the RDS security group allows port 5432 "
+         "from the EC2 instance's security group, and that both are in the same VPC."),
+        (("password authentication failed", "pg_hba.conf"), ACCESS_DENIED,
+         "RDS refused the login. Check DB_USER and the password stored in Secrets Manager."),
+        (("could not translate host name", "name or service not known", "nodename nor servname"),
+         CONFIGURATION_ERROR, "DB_HOST could not be found in DNS. Copy the endpoint from the RDS console."),
+        (("does not exist",), NOT_FOUND, "The database named in DB_NAME (or the user in DB_USER) does not exist."),
+        (("ssl", "certificate"), CONFIGURATION_ERROR,
+         "The TLS connection failed. Check DB_SSLMODE and that DB_SSLROOTCERT points to the RDS certificate bundle."),
+        (("connection refused",), UNAVAILABLE, "RDS refused the connection. Check that the instance is running "
+                                               "and DB_PORT is correct."),
+    ]
+    for words, status, message in known_problems:
+        if any(word in text for word in words):
+            return status, message
+    return UNAVAILABLE, (f"The database connection failed ({type(error).__name__}). "
+                         "The technical details are in logs/app.log.")
+
+
 def check_connection():
     """Connects to the database and reports whether the connection is encrypted with TLS.
 

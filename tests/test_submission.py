@@ -276,7 +276,7 @@ def test_sns_failure(logged_in_client, fake_aws, monkeypatch):
 
 def test_security_configuration_statuses(logged_in_client, monkeypatch):
     page = logged_in_client.get("/").text
-    assert "This page arrived over plain HTTP" in page
+    assert "the page arrived over plain HTTP" in page
     assert "Not Configured" in page
     monkeypatch.setenv("S3_KMS_KEY_ARN", "arn:aws:kms:us-east-1:123456789012:key/abc")
     page = logged_in_client.get("/").text
@@ -288,7 +288,7 @@ def test_security_configuration_statuses(logged_in_client, monkeypatch):
 def test_https_is_verified_only_for_https_requests(logged_in_client):
     # base_url="https://..." makes the fake browser use HTTPS.
     logged_in_client.base_url = "https://testserver"
-    assert "This page arrived over HTTPS." in logged_in_client.get("/").text
+    assert "The browser connected to the app directly over HTTPS." in logged_in_client.get("/").text
 
 
 def test_environment_check(logged_in_client, fake_aws, monkeypatch):

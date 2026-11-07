@@ -80,21 +80,35 @@
   {% endif %}
 
   <h3>AWS environment</h3>
-  <p class="muted small">Checks the IAM identity, EC2 instance, Secrets Manager secret, database connection, and CloudWatch metrics. Read-only.</p>
+  <p class="muted small">Fresh, read-only checks on every click: HTTPS, IAM identity, EC2, Secrets Manager, SQLite, RDS, S3, KMS, Lambda, SES, SNS, SQS, and CloudWatch.
+    Nothing is created, sent, uploaded, or invoked.
+    <strong>Connected</strong> = a real AWS answer proved it. <strong>Not Configured</strong> = the setting is empty.
+    Red statuses name the exact problem (Access Denied, Not Found, Wrong Region, Unavailable, Configuration Error); amber = Timed Out or No Data yet.
+    Changes to <code>.env</code> apply after restarting the app.</p>
   <form method="post" action="/environment-check" class="run-form">
     <button type="submit">Check AWS environment</button>
   </form>
-  {% if checks %}{{ activity_table(checks) }}{% endif %}
+  {% if checks %}
+    {# The time the checks above were made. Every click makes new requests; nothing is reused. #}
+    <p class="small last-checked"><strong>Last checked:</strong> {{ checked_at }}. Click again to re-check.</p>
+    {{ activity_table(checks) }}
+  {% else %}
+    <p class="muted small">Not checked yet on this page.</p>
+  {% endif %}
 </section>
 
 <section class="card">
   <h2>Security Configuration</h2>
-  <p class="muted small">"Configured" means a setting is present. "Verified" means a real request proved it. No secret values are shown.</p>
+  <p class="muted small"><strong>In .env</strong>: <em>Configured</em> only means a value is present (blue, never proof).
+    <strong>Connection</strong>: <em>Connected</em> (green) only after a real request proved it. The HTTPS rows are checked on every page load;
+    the AWS rows show <em>Not Checked</em> until you click <strong>Check AWS environment</strong>. No secret values are shown.</p>
   <div class="table-scroll">
   <table class="data-table">
-    <tr><th>Setting</th><th>Status</th><th>Explanation</th></tr>
-    {% for name, status, explanation in security_rows %}
-    <tr><td>{{ name }}</td><td>{{ status_badge(status) }}</td><td>{{ explanation }}</td></tr>
+    <tr><th>Item</th><th>In .env</th><th>Connection</th><th>Explanation</th></tr>
+    {% for name, setting, connection, explanation in security_rows %}
+    <tr><td>{{ name }}</td>
+        <td>{% if setting == "-" %}<span class="muted">-</span>{% else %}{{ status_badge(setting) }}{% endif %}</td>
+        <td>{{ status_badge(connection) }}</td><td>{{ explanation }}</td></tr>
     {% endfor %}
   </table>
   </div>

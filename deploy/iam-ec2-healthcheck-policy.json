@@ -1,0 +1,61 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "HealthCheckS3BucketExists",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::YOUR_BUCKET_NAME"
+    },
+    {
+      "Sid": "HealthCheckKmsKeyMetadata",
+      "Effect": "Allow",
+      "Action": "kms:DescribeKey",
+      "Resource": "arn:aws:kms:YOUR_REGION:YOUR_ACCOUNT_ID:key/YOUR_KMS_KEY_ID"
+    },
+    {
+      "Sid": "HealthCheckSecretMetadata",
+      "Effect": "Allow",
+      "Action": "secretsmanager:DescribeSecret",
+      "Resource": "arn:aws:secretsmanager:YOUR_REGION:YOUR_ACCOUNT_ID:secret:YOUR_SECRET_NAME-??????"
+    },
+    {
+      "Sid": "HealthCheckLambdaConfiguration",
+      "Effect": "Allow",
+      "Action": "lambda:GetFunctionConfiguration",
+      "Resource": "arn:aws:lambda:YOUR_REGION:YOUR_ACCOUNT_ID:function:YOUR_FUNCTION_NAME"
+    },
+    {
+      "Sid": "HealthCheckLambdaLogDelivery",
+      "Effect": "Allow",
+      "Action": "logs:DescribeLogStreams",
+      "Resource": [
+        "arn:aws:logs:YOUR_REGION:YOUR_ACCOUNT_ID:log-group:/aws/lambda/YOUR_FUNCTION_NAME",
+        "arn:aws:logs:YOUR_REGION:YOUR_ACCOUNT_ID:log-group:/aws/lambda/YOUR_FUNCTION_NAME:*"
+      ]
+    },
+    {
+      "Sid": "OptionalHealthCheckSnsTopic",
+      "Effect": "Allow",
+      "Action": "sns:GetTopicAttributes",
+      "Resource": "arn:aws:sns:YOUR_REGION:YOUR_ACCOUNT_ID:YOUR_TOPIC_NAME"
+    },
+    {
+      "Sid": "OptionalHealthCheckSqsQueue",
+      "Effect": "Allow",
+      "Action": "sqs:GetQueueAttributes",
+      "Resource": "arn:aws:sqs:YOUR_REGION:YOUR_ACCOUNT_ID:YOUR_QUEUE_NAME"
+    },
+    {
+      "Sid": "HealthCheckActionsWithoutResourceLevelPermissions",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeInstances",
+        "cloudwatch:GetMetricStatistics",
+        "ses:GetAccount"
+      ],
+      "Resource": "*",
+      "Condition": { "StringEquals": { "aws:RequestedRegion": "YOUR_REGION" } }
+    }
+  ]
+}

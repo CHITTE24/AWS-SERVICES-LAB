@@ -24,13 +24,27 @@ Status as of the initial build (v1). Update this file as items are verified.
 - [x] S3 SSE-KMS upload and verification, Secrets Manager retrieval and caching, SNS/SQS, and SES in the Lambda handler, against **moto fakes only**
 - [x] The RDS connection takes its password from Secrets Manager in aws mode and fails safely without it (tested with a fake driver, not a real database)
 
+## Connectivity dashboard (v3), verified locally
+
+- [x] The full test suite passes (`python -m pytest`); the AWS checks run against moto, botocore Stubber, and test doubles only
+- [x] *Check AWS environment* makes fresh read-only requests on every click: HTTPS, STS, EC2, Secrets Manager, SQLite, RDS, S3, KMS, Lambda, SES, SNS, SQS, CloudWatch
+- [x] Statuses Connected / Not Configured / Access Denied / Not Found / Wrong Region / Timed Out / Unavailable / Configuration Error / No Data, each tested
+- [x] Connect → disconnect → recover is reflected on the very next click (S3 and Secrets Manager tests); no cached secret result
+- [x] The Security Configuration panel separates *In .env* (Configured, blue) from *Connection* (Connected, green, only after a real check)
+- [x] A forged `X-Forwarded-Proto` header is never reported as HTTPS unless `TRUST_PROXY_HEADERS=true`
+- [x] `Cache-Control: no-store` and a *Last checked* time on the main page
+- [x] The secret value never appears in the page, the run history, or the log file, even with `LOG_LEVEL=DEBUG`
+- [x] `deploy/*.json` policies are valid JSON; the health-check policy's actions exist in the AWS API models and match the code
+
 ## Not yet verified (needs you)
 
 - [ ] **Real S3 + KMS:** an upload shows *AWS KMS → Verified*; `head-object` confirms `aws:kms` with your key
 - [ ] **Real RDS PostgreSQL:** `scripts/init_database.py` succeeds on EC2; *Test connection* shows `TLS in use: yes`
-- [ ] **Real Secrets Manager:** *Check AWS environment* shows *Verified*
+- [ ] **Real Secrets Manager:** *Check AWS environment* shows *Describe secret* and *Retrieve value* **Connected**
+- [ ] **Health-check policy** attached (placeholders replaced) and validated with `aws accessanalyzer validate-policy`
+- [ ] Every row of *Check AWS environment* on EC2 (docs/EC2_DEPLOYMENT.md, section 15), including one disconnect test
 - [ ] **Real Lambda + SES:** a confirmation email arrives (SES sandbox: recipient verified)
-- [ ] **HTTPS:** ALB + ACM certificate, HTTP→HTTPS redirect, Security Configuration shows *Verified*
+- [ ] **HTTPS:** ALB + ACM certificate, HTTP→HTTPS redirect, `TRUST_PROXY_HEADERS=true` with `--forwarded-allow-ips` limited to the ALB subnets, Security Configuration shows *Connected*
 - [ ] Optional SNS/SQS against real resources
 - [ ] The S3 bucket policy in `deploy/s3-bucket-policy.json` (if you apply it) blocks a plain upload
 

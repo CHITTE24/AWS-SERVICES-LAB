@@ -35,6 +35,19 @@ def list_functions(region=None):
     return functions
 
 
+def get_function_configuration(function_name, config=None):
+    """Reads a function's settings WITHOUT running it. Needs lambda:GetFunctionConfiguration.
+
+    Returns: its state ("Active", "Pending", "Inactive", or "Failed"), runtime, and last update status.
+    """
+    response = get_client("lambda", config=config).get_function_configuration(FunctionName=function_name)
+    return {
+        "state": response.get("State", "Active"),  # Very old functions have no State field.
+        "runtime": response.get("Runtime", "container image"),
+        "last_update_status": response.get("LastUpdateStatus", ""),
+    }
+
+
 # The submission processor sends an email, so a retry could send it twice. max_attempts=1 means
 # "never retry automatically". read_timeout gives the function up to 30 seconds to answer.
 SINGLE_ATTEMPT_CONFIG = CLIENT_CONFIG.merge(Config(retries={"max_attempts": 1, "mode": "standard"},

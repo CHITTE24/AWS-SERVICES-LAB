@@ -19,17 +19,28 @@ CLIENT_CONFIG = Config(
 )
 
 
-def get_client(service_name, region=None, config=CLIENT_CONFIG):
+# Used ONLY by the "Check AWS environment" button. A health check should answer quickly:
+# one retry at most and short timeouts, so one unreachable service cannot freeze the page for a minute.
+CHECK_CONFIG = Config(
+    retries={"max_attempts": 2, "mode": "standard"},  # The first try plus one retry.
+    connect_timeout=3,  # Seconds to wait while connecting to AWS.
+    read_timeout=5,  # Seconds to wait for AWS to answer.
+)
+
+
+def get_client(service_name, region=None, config=None):
     """Creates a Boto3 client for one AWS service.
 
     service_name: the Boto3 name of the service, for example "s3", "ec2", or "iam".
     region: an AWS region such as "eu-west-1". If empty, the default region from settings is used.
-    config: timeouts and retries. Most callers keep the default CLIENT_CONFIG.
+    config: timeouts and retries. Empty means CLIENT_CONFIG. The environment check passes CHECK_CONFIG.
     Returns: a Boto3 client object whose methods call the AWS API.
     """
     # Falls back to the configured default region when the caller did not choose one.
     if not region:
         region = get_settings()["aws_region"]
+    if config is None:
+        config = CLIENT_CONFIG
 
     # Creates the client. Boto3 finds the credentials automatically (see the top of this file).
     return boto3.client(service_name, region_name=region, config=config)

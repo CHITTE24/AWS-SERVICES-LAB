@@ -20,6 +20,19 @@ def list_buckets():
     return buckets
 
 
+def head_bucket(bucket_name, config=None):
+    """Checks that a bucket exists and this identity may access it. Reads no objects. Needs s3:ListBucket.
+
+    Returns: the region the bucket lives in, for example "ap-south-1".
+    Raises ClientError "404" (no such bucket) or "403" (access denied OR another account's bucket).
+    """
+    s3 = get_client("s3", config=config)
+    response = s3.head_bucket(Bucket=bucket_name)
+    # Newer Boto3 versions return "BucketRegion". Older ones only have the HTTP header.
+    headers = response.get("ResponseMetadata", {}).get("HTTPHeaders", {})
+    return response.get("BucketRegion") or headers.get("x-amz-bucket-region", "")
+
+
 def get_bucket_region(bucket_name):
     """Returns the region a bucket lives in, for example "eu-west-1".
 

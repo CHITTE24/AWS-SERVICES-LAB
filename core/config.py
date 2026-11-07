@@ -84,6 +84,9 @@ def get_settings():
         "session_secret": os.getenv("SESSION_SECRET", ""),
         # True adds the "Secure" flag to the cookie, so browsers only send it over HTTPS.
         "session_https_only": read_bool("SESSION_HTTPS_ONLY", "false"),
+        # True ONLY behind a load balancer that you control (core/request_security.py explains why).
+        # False: an X-Forwarded-Proto header is never believed, because anyone can send one.
+        "trust_proxy_headers": read_bool("TRUST_PROXY_HEADERS", "false"),
         # Safety switch: False blocks any operation marked as "write".
         "allow_write_operations": read_bool("ALLOW_WRITE_OPERATIONS", "false"),
         # Location of the SQLite database file (run history, and form submissions in local mode).

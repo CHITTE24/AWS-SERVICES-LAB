@@ -25,3 +25,12 @@ def setup_logging(level_name, log_file):
         ],
         force=True,  # Replaces any logging setup done earlier, for example by uvicorn.
     )
+
+    # SECURITY: at DEBUG level, botocore logs every raw AWS response body. For Secrets Manager that
+    # body contains the secret value. So the AWS libraries never log below INFO, even with LOG_LEVEL=DEBUG.
+    for library in QUIET_LIBRARIES:
+        logging.getLogger(library).setLevel(max(level, logging.INFO))
+
+
+# Libraries whose DEBUG messages could contain request or response bodies (and so secrets).
+QUIET_LIBRARIES = ("botocore", "boto3", "s3transfer", "urllib3")

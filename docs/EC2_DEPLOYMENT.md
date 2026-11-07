@@ -29,7 +29,9 @@ temporary role credentials from the instance automatically.
 2. **IAM → Roles → Create role.** Trusted entity: **AWS service → EC2**. Attach `AwsServicesLabReadOnly`.
    Name it `AwsServicesLabRole`.
 3. Later, when you connect the AWS services (section 12), add permissions from
-   [deploy/iam-ec2-app-policy.json](../deploy/iam-ec2-app-policy.json) one statement at a time.
+   [deploy/iam-ec2-app-policy.json](../deploy/iam-ec2-app-policy.json) one statement at a time, and the
+   read-only dashboard checks from [deploy/iam-ec2-healthcheck-policy.json](../deploy/iam-ec2-healthcheck-policy.json).
+   You attach every policy yourself; the app never changes IAM.
 
 ## 2. AWS Console: create the security group
 
@@ -137,6 +139,7 @@ For the first start, keep these values:
 | `APP_MODE` | `local` | Unconfigured AWS services show **Simulated** instead of Failed |
 | `SESSION_SECRET` | (the random value) | Logins survive restarts. Never share or commit it |
 | `SESSION_HTTPS_ONLY` | `false` | Correct for the SSH tunnel. Set `true` only behind HTTPS (section 13) |
+| `TRUST_PROXY_HEADERS` | `false` | Correct for the SSH tunnel. Set `true` only behind your own ALB (section 13) |
 | `AWS_REGION` | your region, for example `ap-south-1` | Region of the AWS resources you create later |
 | `AWS_PROFILE` | **empty** | Boto3 then uses the instance's IAM role |
 | `DATABASE_BACKEND` | `sqlite` | Saved in `data/lab.db`, created automatically |
@@ -145,14 +148,39 @@ For the first start, keep these values:
 Test-run once by hand:
 
 ```bash
-.venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8000
+.venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8000 --no-proxy-headers
 ```
 In a **second** SSH window: `curl http://127.0.0.1:8000/health` should print `{"status":"ok"}`.
 Then press **Ctrl+C** in the first window.
 
-## 8. Run it as a systemd service
+`--no-proxy-headers` makes uvicorn ignore `X-Forwarded-*` headers. Through the SSH tunnel there is no
+proxy, so nobody should be able to make the app believe a request was HTTPS by sending such a header.
+
+## 8. Keep the app running: choose 8A (by hand) or 8B (systemd)
+
+Both options run the **same command**. Use **8A** if `systemctl` is not available or you prefer to start
+the app yourself. Use **8B** to start it automatically at boot and after a crash.
+Check whether systemd is available with `command -v systemctl` (no output means: use 8A).
+
+### 8A. Manual: start uvicorn yourself (no systemd needed)
+
+```bash
+cd ~/aws-services-lab
+mkdir -p logs
+# Starts the app in the background. "nohup" keeps it running after you log out of SSH.
+nohup .venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8000 --no-proxy-headers \
+      > logs/uvicorn.out 2>&1 &
+echo $! > logs/uvicorn.pid                        # Remembers the process ID, to stop it later
+curl http://127.0.0.1:8000/health                 # {"status":"ok"}
+```
+Stop it: `kill "$(cat logs/uvicorn.pid)"`. Restart it: stop, then run the `nohup` command again.
+It does **not** start again after a reboot or a crash; start it again by hand, or use 8B.
+(Alternative: run the plain command inside `tmux` and detach with Ctrl+B, then D.)
+
+### 8B. Optional: run it as a systemd service
 
 systemd starts the app at boot, restarts it after a crash, and collects its logs.
+If you used 8A, stop that copy first (`kill "$(cat logs/uvicorn.pid)"`), or port 8000 is already in use.
 
 ```bash
 sudo cp ~/aws-services-lab/deploy/aws-services-lab.service /etc/systemd/system/
@@ -174,27 +202,34 @@ ssh -i aws-services-lab.pem -L 8000:127.0.0.1:8000 ubuntu@<PUBLIC_IP>
 ```
 Keep that window open and browse to **http://127.0.0.1:8000**. Log in, submit the form, and open
 Services, Experiments, and History. Unconfigured AWS services show **Simulated** or **Not Configured**.
+Through the tunnel the HTTPS rows correctly say **Not Configured** (the browser-to-app hop is plain HTTP
+inside the encrypted SSH connection).
 
 ## 10. Logs and health
 
 ```bash
-journalctl -u aws-services-lab -f                     # Live log (Ctrl+C to stop watching)
-journalctl -u aws-services-lab -n 100 --no-pager      # The last 100 lines
-journalctl -u aws-services-lab --since "1 hour ago"   # Everything from the last hour
-tail -f ~/aws-services-lab/logs/app.log               # The app's own log file (the same app messages)
-systemctl status aws-services-lab                     # Running? Since when? Last few log lines
+tail -f ~/aws-services-lab/logs/app.log               # The app's own log file (8A and 8B)
+tail -n 50 ~/aws-services-lab/logs/uvicorn.out        # 8A only: uvicorn's start-up output
+journalctl -u aws-services-lab -f                     # 8B only: live log (Ctrl+C to stop watching)
+journalctl -u aws-services-lab -n 100 --no-pager      # 8B only: the last 100 lines
+systemctl status aws-services-lab                     # 8B only: running? since when?
 curl http://127.0.0.1:8000/health                     # {"status":"ok"} means the web server answers
 ```
 *`/health` deliberately does not call AWS, so it works before any service is connected. Secrets and
-passwords are never written to the logs.*
+passwords are never written to the logs: even with `LOG_LEVEL=DEBUG`, the AWS libraries are kept at INFO,
+because their DEBUG output would include raw AWS responses (and so secret values).*
 
 ## 11. Restart, update from GitHub, and roll back
 
-```bash
-sudo systemctl restart aws-services-lab       # After editing .env (settings are read at start-up)
-sudo systemctl stop aws-services-lab          # Stops it (it finishes requests in progress first)
-sudo systemctl start aws-services-lab         # Starts it again
-```
+**`.env` is read only when the app starts.** After editing it, restart the app:
+
+| | 8A (manual) | 8B (systemd) |
+|---|---|---|
+| Restart | `kill "$(cat logs/uvicorn.pid)"`, then the `nohup` command from 8A | `sudo systemctl restart aws-services-lab` |
+| Stop | `kill "$(cat logs/uvicorn.pid)"` | `sudo systemctl stop aws-services-lab` |
+
+Changes to **AWS resources** (a bucket created or deleted, a permission added or removed) need **no**
+restart: the next click on **Check AWS environment** checks them again.
 
 After you push new commits from your computer:
 
@@ -202,8 +237,9 @@ After you push new commits from your computer:
 cd ~/aws-services-lab
 git pull                                       # Downloads the latest commits
 .venv/bin/pip install -r requirements.txt      # Installs any new libraries
-sudo cp deploy/aws-services-lab.service /etc/systemd/system/ && sudo systemctl daemon-reload   # Only if the service file changed
-sudo systemctl restart aws-services-lab
+# 8B only, if the service file changed:
+sudo cp deploy/aws-services-lab.service /etc/systemd/system/ && sudo systemctl daemon-reload
+# Then restart (8A or 8B, see the table above), and:
 curl http://127.0.0.1:8000/health
 ```
 `git pull` never touches `.env`, `data/`, or `logs/`: they are not in the repository.
@@ -213,19 +249,26 @@ Return to the latest with `git checkout main && git pull`.
 
 ## 12. Connect the AWS services one at a time
 
-Do these in order, **one at a time**. After each change: edit `.env` → `sudo systemctl restart
-aws-services-lab` → test → check `journalctl -u aws-services-lab -n 50`. The detailed console steps are in
+Do these in order, **one at a time**. After each change: edit `.env` → restart the app (section 11) →
+click **Check AWS environment** → check the log. The detailed console steps are in
 [README.md → AWS Security Setup](../README.md#aws-security-setup).
 
-| # | Service | AWS Console | IAM permission for `AwsServicesLabRole` | `.env` setting | How to test |
-|---|---|---|---|---|---|
-| 1 | IAM role / STS | Section 1 | (none needed) | `AWS_PROFILE` empty | `.venv/bin/python scripts/live_aws_check.py` shows `assumed-role/AwsServicesLabRole/...` |
-| 2 | S3 + KMS | Create a private bucket and a KMS key (README steps 1–5) | `s3:PutObject` + `kms:GenerateDataKey` statements; KMS key policy statements | `S3_BUCKET_NAME`, `S3_KMS_KEY_ARN` | Submit with a document: *AWS KMS → Verified* |
-| 3 | Lambda + SES | Verify SES identities; create the function (README step 11) | `lambda:InvokeFunction` | `LAMBDA_FUNCTION_NAME` | Submit: email status **Sent** |
-| 4 | SNS / SQS (optional) | Create a topic / queue | `sns:Publish` / `sqs:SendMessage` | `SNS_TOPIC_ARN`, `SQS_QUEUE_URL` | Submit: SNS / SQS rows **Success** |
-| 5 | Secrets Manager | Store the DB password secret (README step 6) | `secretsmanager:GetSecretValue` | `AWS_SECRETS_MANAGER_SECRET_NAME` | **Check AWS environment**: *Secrets Manager → Verified* |
-| 6 | RDS PostgreSQL | Private instance; its security group allows 5432 **from `aws-services-lab-sg` only** (README step 9) | (uses the secret above) | `DATABASE_BACKEND=postgres`, `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_SSLROOTCERT` | `.venv/bin/python scripts/init_database.py`, then **Check AWS environment** → *Database / Test connection*: `TLS in use: yes` |
-| 7 | CloudWatch | Metrics are read automatically | read-only policy (section 1) | none | *Lambda Health* experiment |
+**Permissions for the dashboard checks.** Besides the workflow policy, attach
+[deploy/iam-ec2-healthcheck-policy.json](../deploy/iam-ec2-healthcheck-policy.json) (read-only) to the
+instance role, after replacing every `YOUR_...` placeholder and deleting the optional SNS/SQS statements you
+don't use. Without it, the affected rows correctly show **Access Denied**: nothing is reported as Connected
+unless AWS confirmed it.
+
+| # | Service | AWS Console | Workflow permission (`iam-ec2-app-policy.json`) | Health-check permission | `.env` setting | Dashboard row when it works |
+|---|---|---|---|---|---|---|
+| 1 | IAM role / STS | Section 1 | (none needed) | (none needed) | `AWS_PROFILE` empty | *AWS IAM / STS → Connected*, credential source `iam-role` |
+| 2 | EC2 | (this instance) | (none) | `ec2:DescribeInstances` | `AWS_REGION` = the instance's region | *Amazon EC2 → Connected* (no *Wrong Region* row) |
+| 3 | S3 + KMS | Bucket and KMS key (README steps 1–5) | `s3:PutObject`, `kms:GenerateDataKey` | `s3:ListBucket`, `kms:DescribeKey` | `S3_BUCKET_NAME`, `S3_KMS_KEY_ARN` | *Amazon S3* and *AWS KMS → Connected*; a submitted document shows *AWS KMS → Verified* |
+| 4 | Lambda + SES | SES identities; the function (README step 11) | `lambda:InvokeFunction` | `lambda:GetFunctionConfiguration`, `ses:GetAccount` | `LAMBDA_FUNCTION_NAME` | *AWS Lambda* and *Amazon SES → Connected*; a submission shows email **Sent** |
+| 5 | SNS / SQS (optional) | Topic / queue | `sns:Publish` / `sqs:SendMessage` | `sns:GetTopicAttributes` / `sqs:GetQueueAttributes` | `SNS_TOPIC_ARN`, `SQS_QUEUE_URL` | *Amazon SNS* / *Amazon SQS → Connected* |
+| 6 | Secrets Manager | The DB password secret (README step 6) | `secretsmanager:GetSecretValue` | `secretsmanager:DescribeSecret` | `AWS_SECRETS_MANAGER_SECRET_NAME` | *Describe secret* and *Retrieve value → Connected* (values never shown) |
+| 7 | RDS PostgreSQL | Private instance; 5432 **from `aws-services-lab-sg` only** (README step 9) | (uses the secret) | (none: network + password) | `DATABASE_BACKEND=postgres`, `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_SSLROOTCERT` | `scripts/init_database.py`, then *Amazon RDS (PostgreSQL) → Connected* with `TLS in use: yes` |
+| 8 | CloudWatch | Automatic for Lambda | (none) | `cloudwatch:GetMetricStatistics`, `logs:DescribeLogStreams` | (uses `LAMBDA_FUNCTION_NAME`) | *Metrics API access → Connected*; after one submission, *metrics/logs delivered → Connected* |
 
 For the RDS certificate bundle:
 `curl --create-dirs -o ~/aws-services-lab/certs/global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem`,
@@ -233,6 +276,20 @@ then set `DB_SSLROOTCERT=/home/ubuntu/aws-services-lab/certs/global-bundle.pem`.
 
 When **every** service you use is configured, set `APP_MODE=aws`, so a missing setting shows **Failed**
 instead of Simulated. A service that is not configured never crashes the app: its row just says so.
+
+**What each dashboard status means**
+
+| Status | Meaning | Typical fix |
+|---|---|---|
+| **Connected** (green) | A real read-only AWS request proved it | — |
+| **Not Configured** (grey) | The `.env` setting is empty, so nothing was checked | Fill it in, restart |
+| **Access Denied** (red) | AWS refused: the role lacks a permission (for S3 403: or the bucket is another account's) | Add the health-check permission |
+| **Not Found** (red) | The resource does not exist (typo, deleted, other account) | Fix the name/ARN in `.env` |
+| **Wrong Region** (red) | The resource is in a different region than `AWS_REGION` | Make them match |
+| **Timed Out** (amber) | AWS or RDS did not answer within a few seconds | Network, security groups, VPC endpoints |
+| **Unavailable** (red) | Unreachable, or the resource is disabled / not active | Check the resource's state |
+| **Configuration Error** (red) | A setting has the wrong format or contradicts another | Read the row's explanation |
+| **No Data** (amber) | The API works, but no metrics/logs have arrived yet | Submit the form once, then check again |
 
 ## 13. Public access: HTTPS only, and protect the demo login
 
@@ -246,8 +303,15 @@ target group on port 8000 with health check path `/health`. Then:
 - **Restrict the ALB's security group** to your own IP address on 443/80, not 0.0.0.0/0, until real
   authentication (for example Amazon Cognito) replaces the demo login.
 - In `aws-services-lab-sg`, allow port **8000 only from the ALB's security group**.
-- In the service file, switch to the commented ALB `ExecStart` line, and set `SESSION_HTTPS_ONLY=true`.
-  Then `sudo systemctl daemon-reload && sudo systemctl restart aws-services-lab`.
+- Start uvicorn with `--host 0.0.0.0 --proxy-headers --forwarded-allow-ips=<the ALB's subnet ranges>`
+  (8A: in the `nohup` command; 8B: the commented ALB `ExecStart` line, then
+  `sudo systemctl daemon-reload && sudo systemctl restart aws-services-lab`). List **only** the subnets the
+  ALB runs in (EC2 → Load Balancers → your ALB → Network mapping), never `*`.
+- In `.env`, set `TRUST_PROXY_HEADERS=true` and `SESSION_HTTPS_ONLY=true`, then restart.
+  The app believes `X-Forwarded-Proto` only when **both** are true: you set `TRUST_PROXY_HEADERS=true`, and
+  uvicorn accepted the header because it came from an address in `--forwarded-allow-ips`. A header sent by
+  anyone else is ignored and the HTTPS row shows **Configuration Error**, never Connected.
+- Go back to the SSH tunnel by reversing both: `--no-proxy-headers` on 127.0.0.1, and `TRUST_PROXY_HEADERS=false`.
 - **Never** open port 8000 to the internet directly, and never serve the app publicly over plain HTTP.
 
 ## 14. Troubleshooting
@@ -268,7 +332,11 @@ target group on port 8000 with health check path `/health`. Then:
 | "No AWS credentials were found" | The IAM role is not attached (section 3), or `AWS_PROFILE` is not empty |
 | `AccessDenied` / "not authorized to perform" | The role's policy lacks that action or resource. Add only that permission |
 | RDS connection times out | The RDS security group must allow 5432 from `aws-services-lab-sg` |
-| Changed `.env`, nothing happened | Settings are read at start-up: `sudo systemctl restart aws-services-lab` |
+| Changed `.env`, nothing happened | Settings are read at start-up: restart the app (section 11) |
+| A dashboard row says **Access Denied** | Attach `deploy/iam-ec2-healthcheck-policy.json` (placeholders replaced) to the instance role |
+| HTTPS row: **Configuration Error** behind the ALB | Set `TRUST_PROXY_HEADERS=true` **and** start uvicorn with `--proxy-headers --forwarded-allow-ips=<ALB subnets>` |
+| HTTPS row: **Configuration Error** through the tunnel | Something sent `X-Forwarded-Proto`. Start uvicorn with `--no-proxy-headers` and keep `TRUST_PROXY_HEADERS=false` |
+| EC2 shows **Wrong Region** | `AWS_REGION` differs from the instance's region. Set it to the instance's region (for example `ap-south-1`) |
 | Disk filling up | `du -sh ~/aws-services-lab/logs` and `sudo journalctl --vacuum-size=200M`. Empty the log file with `truncate -s 0 ~/aws-services-lab/logs/app.log` |
 
 Is the IAM role attached? On the instance:
@@ -281,20 +349,34 @@ curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta
 
 Local tests passing does **not** prove the EC2 deployment works. Check on the server:
 
-- [ ] `systemctl is-active aws-services-lab` prints `active`
-- [ ] `curl http://127.0.0.1:8000/health` prints `{"status":"ok"}`
+- [ ] 8A: `curl http://127.0.0.1:8000/health` answers. 8B: also `systemctl is-active aws-services-lab` prints `active`
+- [ ] In the browser's developer tools (Network tab), the main page's response has `Cache-Control: no-store`
 - [ ] Through the tunnel: login, form, document checks, Services, Experiments, History, and logout all work
-- [ ] `.venv/bin/python scripts/live_aws_check.py` shows the **role** ARN (`assumed-role/AwsServicesLabRole/...`)
-- [ ] `sudo reboot`, reconnect, and the service is running again, earlier runs are still listed in History, and you are still logged in
+- [ ] `.venv/bin/python scripts/live_aws_check.py` shows the **role** ARN (`assumed-role/...`)
+- [ ] 8B only: `sudo reboot`, reconnect, and the service is running again, earlier runs are still in History
 - [ ] `ls -l .env` shows `-rw-------`
 - [ ] The security group has **no** inbound rule for port 8000 from the internet
-- [ ] After each AWS service in section 12: its row shows the real result (Verified / Sent / Success)
+
+Click **Check AWS environment** and confirm each row (the *Last checked* time must change on every click):
+
+- [ ] **HTTPS**: *Not Configured* through the tunnel; *Connected* behind the ALB with `TRUST_PROXY_HEADERS=true`
+- [ ] **AWS IAM / STS**: *Connected*, credential source `iam-role`, identity `assumed-role/<your role>/i-...`
+- [ ] **Amazon EC2**: *Connected* for metadata and *Describe this instance*; no *Wrong Region* row
+- [ ] **AWS Secrets Manager**: *Describe secret* and *Retrieve value* both *Connected*; no value visible
+- [ ] **SQLite (local file)**: *Connected*. **Amazon RDS**: *Connected* with `TLS in use: yes` (or *Not Configured* while on SQLite)
+- [ ] **Amazon S3** and **AWS KMS**: *Connected*; then submit a document and see *AWS KMS → Verified*
+- [ ] **AWS Lambda** and **Amazon SES**: *Connected*; SES says whether the account is in the sandbox
+- [ ] **Amazon SNS / SQS** (if used): *Connected*
+- [ ] **Amazon CloudWatch**: *Metrics API access → Connected*; after one submission, metrics and logs *delivered → Connected*
+- [ ] **Disconnect test** (pick one service, for example S3): set a wrong bucket name, restart → *Not Found*;
+      restore it, restart → *Connected*. Remove the setting, restart → *Not Configured*
 
 ## 16. Stop the app and clean up AWS resources
 
 Stop the app on the server:
 ```bash
-sudo systemctl disable --now aws-services-lab   # Stops it and stops it starting at boot
+kill "$(cat ~/aws-services-lab/logs/uvicorn.pid)"   # 8A (started by hand)
+sudo systemctl disable --now aws-services-lab       # 8B: stops it and stops it starting at boot
 ```
 
 **Stop** the instance when you are not using it (EC2 → Instance state → Stop). You still pay for its

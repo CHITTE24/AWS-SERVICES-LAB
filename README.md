@@ -49,6 +49,7 @@ An AWS failure is never turned into "Simulated". Status words: **Success**, **Ve
 | `APP_MODE` | `local` or `aws` | `aws` on EC2 once resources exist |
 | `SESSION_SECRET` | Signs the login cookie | Now (random value) |
 | `SESSION_HTTPS_ONLY` | `true` adds the cookie's Secure flag | When served over HTTPS |
+| `TRUST_PROXY_HEADERS` | `true` believes `X-Forwarded-Proto` from your load balancer (with uvicorn `--forwarded-allow-ips`) | Only behind your own HTTPS ALB |
 | `AWS_REGION` | Region of all resources, e.g. `ap-south-1` | Now |
 | `AWS_PROFILE` | Local AWS CLI profile (empty on EC2) | Local live testing only |
 | `DATABASE_BACKEND` | `sqlite` or `postgres` | `postgres` after creating RDS |
@@ -63,6 +64,8 @@ An AWS failure is never turned into "Simulated". Status words: **Success**, **Ve
 | `SNS_TOPIC_ARN`, `SQS_QUEUE_URL` | Optional notifications | Optional |
 | `SES_SENDER_EMAIL` | **Set on the Lambda function**, not in `.env` | After verifying the SES identity |
 
+`.env` is read **when the app starts**: restart the app after editing it. Changes to AWS resources need no restart.
+
 ## The submission workflow
 
 1. The form is validated on the server: all five fields required; the mobile number is exactly 5 digits and is stored as **text**, so leading zeros are kept; the email format is checked; the optional document must be PDF, TXT, DOCX, or CSV, at most 5 MB (5 × 1024 × 1024 bytes), and its content must match its type.
@@ -71,7 +74,27 @@ An AWS failure is never turned into "Simulated". Status words: **Success**, **Ve
 4. The Lambda function is invoked synchronously, with **no automatic retry**, so one submission means at most one email. It sends the email with SES and returns the result. Optional SNS and SQS messages carry only the submission ID and metadata.
 5. The browser is redirected to `/?submission_id=...` (Post/Redirect/Get), and a hidden random submission ID blocks duplicates. A refresh, a double click, or Back + Submit never processes the form twice.
 
-The **AWS Service Activity** section shows each step's real outcome. **Check AWS environment** runs separate read-only checks: the IAM role via STS, the EC2 instance via IMDSv2 and `DescribeInstances`, Secrets Manager retrieval (values never shown), the database connection with the actual TLS state, and the Lambda CloudWatch metrics.
+The **AWS Service Activity** section shows each step's real outcome.
+
+### Check AWS environment
+
+The button runs **fresh, read-only checks on every click** (nothing cached, nothing created, sent, uploaded, or invoked) and shows a *Last checked* time:
+
+| Row | AWS call | Proves |
+|---|---|---|
+| HTTPS | (the request itself) | The browser used HTTPS, from trusted information only; the cookie flag matches |
+| AWS IAM / STS | `GetCallerIdentity` | Which identity and credential source (`iam-role` on EC2) |
+| Amazon EC2 | IMDSv2 + `DescribeInstances` (this instance only) | Running on EC2, in the region `AWS_REGION` names |
+| AWS Secrets Manager | `DescribeSecret`, then `GetSecretValue` (not cached) | The secret exists (metadata) **and** the app may read it. Values are never shown or logged |
+| SQLite / Amazon RDS | `SELECT 1` | Each database separately; RDS only *Connected* with TLS in use |
+| Amazon S3 | `HeadBucket` | The bucket exists and is accessible (a 403 is reported as ambiguous) |
+| AWS KMS | `DescribeKey` | The key exists and is enabled (encrypting is proven per upload) |
+| AWS Lambda | `GetFunctionConfiguration` | The function exists and is Active (never invoked) |
+| Amazon SES | `GetAccount` | Sending enabled, sandbox or production (no email sent) |
+| Amazon SNS / SQS | `GetTopicAttributes` / `GetQueueAttributes` | The topic / queue exists (nothing published or sent) |
+| Amazon CloudWatch | `GetMetricStatistics`, `DescribeLogStreams` | API access, and separately whether metrics and logs actually arrived |
+
+Statuses: **Connected** (green, proven by AWS), **Not Configured** (setting empty), **Access Denied**, **Not Found**, **Wrong Region**, **Timed Out**, **Unavailable**, **Configuration Error**, and **No Data** (API works, nothing delivered yet). A setting that merely exists is shown as **Configured** (blue) in the Security Configuration panel, never as Connected. The checks need the read-only [deploy/iam-ec2-healthcheck-policy.json](deploy/iam-ec2-healthcheck-policy.json); without it, rows show **Access Denied**.
 
 ## RDS database (PostgreSQL)
 
@@ -104,7 +127,7 @@ Nothing here is done automatically. You create every resource yourself, and **ea
 5. **App configuration.** Add `S3_BUCKET_NAME`, `AWS_REGION`, and `S3_KMS_KEY_ARN` (the key **ARN**) to `.env`.
 6. **Secret.** Secrets Manager → Store a new secret → "Credentials for Amazon RDS database" (or "Other type"), with JSON `{"username": "labapp", "password": "..."}`. RDS can also create and rotate this secret for you ("Manage master credentials in AWS Secrets Manager").
 7. **Secret reference.** Put the secret's **name or ARN** (never the value) in `AWS_SECRETS_MANAGER_SECRET_NAME`. The app caches it for `SECRET_CACHE_SECONDS`. After a password rotation it picks up the new value within that time, or immediately after a restart.
-8. **EC2 instance role.** Attach [deploy/iam-readonly-policy.json](deploy/iam-readonly-policy.json) (dashboard) and [deploy/iam-ec2-app-policy.json](deploy/iam-ec2-app-policy.json) (workflow) to `AwsServicesLabRole`, after replacing every `YOUR_...` placeholder. Remove the optional SNS/SQS/Logs statements you don't use. Never put access keys on the instance.
+8. **EC2 instance role.** Attach [deploy/iam-readonly-policy.json](deploy/iam-readonly-policy.json) (services dashboard), [deploy/iam-ec2-app-policy.json](deploy/iam-ec2-app-policy.json) (workflow), and [deploy/iam-ec2-healthcheck-policy.json](deploy/iam-ec2-healthcheck-policy.json) (Check AWS environment) to the instance role, after replacing every `YOUR_...` placeholder. Remove the optional SNS/SQS/Logs statements you don't use. Never put access keys on the instance. You can validate a policy for free with `aws accessanalyzer validate-policy --policy-type IDENTITY_POLICY --policy-document file://deploy/iam-ec2-healthcheck-policy.json`.
 9. **RDS.** Create a PostgreSQL instance with **Public access: No** in the same VPC. Give its security group an inbound rule for **5432 from the EC2 instance's security group only**. Download the CA bundle on EC2 (`curl --create-dirs -o certs/global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem`). Set `DATABASE_BACKEND=postgres`, `DB_HOST` (the endpoint), `DB_NAME`, `DB_USER`, and `DB_SSLROOTCERT`, then run `scripts/init_database.py`. This app uses password authentication through Secrets Manager, not IAM database authentication.
 10. **HTTPS.** Remote traffic must use HTTPS. `http://127.0.0.1` is fine only on your own computer or through the SSH tunnel. Recommended setup:
     - Request a public certificate in **AWS Certificate Manager** for your domain (DNS validation).
@@ -112,13 +135,14 @@ Nothing here is done automatically. You create every resource yourself, and **ea
     - **HTTPS :443 listener** with the ACM certificate → **target group** (HTTP, port 8000, health check path `/health`) → the EC2 instance.
     - **HTTP :80 listener** → action "Redirect to HTTPS 443" (status 301).
     - The EC2 security group allows **8000 only from the ALB's security group**.
-    - In the systemd service, use the commented ALB `ExecStart` line (`--proxy-headers --forwarded-allow-ips=<VPC CIDR>`), and set `SESSION_HTTPS_ONLY=true`.
+    - Start uvicorn with `--proxy-headers --forwarded-allow-ips=<the ALB's subnet ranges>` (the commented ALB `ExecStart` line in the systemd file, or the same options when starting it by hand), and set `TRUST_PROXY_HEADERS=true` and `SESSION_HTTPS_ONLY=true`.
+    - Through the SSH tunnel instead, use `--no-proxy-headers` and keep `TRUST_PROXY_HEADERS=false`. The app then never believes an `X-Forwarded-Proto` header, because anyone can send one.
     The session cookie is always HttpOnly and SameSite=Lax. With `SESSION_HTTPS_ONLY=true` it is also Secure.
 11. **Lambda + SES.** Verify a sender identity in SES. In the SES sandbox, **recipients must be verified too**, until you request production access. Create a Python Lambda function from [deploy/lambda_function/submission_processor.py](deploy/lambda_function/submission_processor.py) (handler `submission_processor.lambda_handler`, timeout 15 s), with the environment variable `SES_SENDER_EMAIL`. Give its execution role [deploy/iam-lambda-policy.json](deploy/iam-lambda-policy.json). Put the function name in `LAMBDA_FUNCTION_NAME`. Optionally create an SNS topic and an SQS queue and set their ARN/URL.
 12. **Test S3 encryption.** Submit a document, then check that the Activity table shows *AWS KMS → Verified*. Confirm it independently with
     `aws s3api head-object --bucket <bucket> --key <key from the results>`: you should see `"ServerSideEncryption": "aws:kms"` and your key ARN.
-13. **Test the secret.** Click **Check AWS environment**. *Secrets Manager → Verified* shows only the number of keys, never the values. *Test connection* should say `TLS in use: yes`.
-14. **Test HTTPS.** Open `http://your-domain`: it must redirect to `https://`. The Security Configuration panel must show *HTTPS / TLS for this page → Verified*. You can also run `curl -I http://your-domain`, which should return a 301 with `Location: https://...`.
+13. **Test the secret.** Click **Check AWS environment**. *AWS Secrets Manager → Describe secret* and *Retrieve value* should both be **Connected**; only the number of keys is shown, never the values. *Amazon RDS (PostgreSQL) → Test connection* should be **Connected** with `TLS in use: yes`.
+14. **Test HTTPS.** Open `http://your-domain`: it must redirect to `https://`. The Security Configuration panel must show *HTTPS / TLS for this page → Connected*. You can also run `curl -I http://your-domain`, which should return a 301 with `Location: https://...`.
 
 ### Optional: enforce S3 rules with a bucket policy
 
@@ -133,6 +157,7 @@ Nothing here is done automatically. You create every resource yourself, and **ea
 | Who | Permissions | File |
 |---|---|---|
 | EC2 role: dashboard | read-only Describe/List actions | `deploy/iam-readonly-policy.json` |
+| EC2 role: Check AWS environment | read-only, one resource each where AWS allows it: `s3:ListBucket`, `kms:DescribeKey`, `secretsmanager:DescribeSecret`, `lambda:GetFunctionConfiguration`, `logs:DescribeLogStreams`, optional `sns:GetTopicAttributes` / `sqs:GetQueueAttributes`; region-limited `ec2:DescribeInstances`, `cloudwatch:GetMetricStatistics`, `ses:GetAccount` | `deploy/iam-ec2-healthcheck-policy.json` |
 | EC2 role: workflow | `s3:PutObject` (bucket/submissions/*), `kms:GenerateDataKey` (key, via S3 only), `secretsmanager:GetSecretValue` (one secret), `lambda:InvokeFunction` (one function), optional `sns:Publish`, `sqs:SendMessage`, CloudWatch Logs | `deploy/iam-ec2-app-policy.json` |
 | Lambda execution role | its own CloudWatch Logs, `ses:SendEmail` only from your sender address | `deploy/iam-lambda-policy.json` |
 | KMS key policy | lets the EC2 role use the key through S3 | `deploy/kms-key-policy-statements.json` |

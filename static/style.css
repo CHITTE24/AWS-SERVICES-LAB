@@ -72,10 +72,19 @@ form.inline { display: inline; }
 .badge-error { background: var(--error); }
 
 /* Extra status badges for the lab page (see the status_badge macro in templates/_macros.html) */
-.badge-verified, .badge-sent, .badge-configured { background: var(--success); }
-.badge-failed { background: var(--error); }
-.badge-simulated, .badge-unknown, .badge-pending { background: var(--warning); }
-.badge-skipped, .badge-not-configured { background: var(--muted); }
+/* GREEN only when a real request PROVED something. */
+.badge-verified, .badge-sent, .badge-connected { background: var(--success); }
+/* "Configured" only means a setting is present in .env, so it is neutral blue, never green. */
+.badge-configured { background: #2b6cb0; }
+/* RED: AWS (or the database) answered with a problem. */
+.badge-failed, .badge-access-denied, .badge-not-found, .badge-wrong-region,
+.badge-unavailable, .badge-configuration-error { background: var(--error); }
+/* AMBER: unknown or not proven yet. */
+.badge-simulated, .badge-unknown, .badge-pending, .badge-timed-out, .badge-no-data { background: var(--warning); }
+/* GREY: nothing was checked. */
+.badge-skipped, .badge-not-configured, .badge-not-checked { background: var(--muted); }
+/* The "Last checked" line above the environment check results. */
+.last-checked { margin: 8px 0; }
 
 /* The lab form: a message beside each invalid field, and a larger Submit button */
 .field-error { display: block; color: var(--error); font-weight: 600; font-size: 0.85rem; margin-top: 4px; }
