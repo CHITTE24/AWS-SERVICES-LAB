@@ -1,4 +1,5 @@
 # systemd service file: keeps the app running on EC2 and restarts it after crashes or reboots.
+# Written for Ubuntu (default user "ubuntu"), with the repository cloned into /home/ubuntu/aws-services-lab.
 # Install it with the commands in docs/EC2_DEPLOYMENT.md (it is copied to /etc/systemd/system/).
 
 [Unit]
@@ -8,19 +9,25 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-# Run as the normal ec2-user account, not as root.
-User=ec2-user
-# The folder the repository was cloned into. main.py loads .env from this folder.
-WorkingDirectory=/home/ec2-user/aws-services-lab
+# Run as the normal "ubuntu" account, not as root.
+User=ubuntu
+Group=ubuntu
+# The folder the repository was cloned into. The app loads .env from this folder.
+WorkingDirectory=/home/ubuntu/aws-services-lab
+# Sends Python output to the journal immediately, so "journalctl -u aws-services-lab" is always up to date.
+Environment=PYTHONUNBUFFERED=1
 # Listens only on 127.0.0.1 (the server itself). Reach it through an SSH tunnel (see the docs).
-ExecStart=/home/ec2-user/aws-services-lab/.venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8000
+ExecStart=/home/ubuntu/aws-services-lab/.venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8000
 # Behind an HTTPS Application Load Balancer, use this line INSTEAD (README: AWS Security Setup, step 10).
 # --forwarded-allow-ips trusts the ALB's X-Forwarded-Proto header, so the app knows the browser used HTTPS.
 # Use your VPC's CIDR range, and allow port 8000 in the instance security group ONLY from the ALB's security group.
-#ExecStart=/home/ec2-user/aws-services-lab/.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=10.0.0.0/16
+#ExecStart=/home/ubuntu/aws-services-lab/.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=10.0.0.0/16
 # Restart automatically if the app crashes, after waiting 5 seconds.
 Restart=on-failure
 RestartSec=5
+# On "systemctl stop", uvicorn receives SIGTERM, finishes requests in progress, then exits.
+# If it has not stopped after 20 seconds, systemd stops it forcefully.
+TimeoutStopSec=20
 # Basic hardening: the app cannot gain extra privileges and gets its own private /tmp.
 NoNewPrivileges=true
 PrivateTmp=true

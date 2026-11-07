@@ -1,14 +1,23 @@
 # --- Secrets and local settings (never commit these) ---
 .env
+# Other .env variants (for example .env.production). The safe template .env.example IS committed.
+.env.*
+!.env.example
 *.pem
 *.key
+*.ppk
+id_rsa*
+id_ed25519*
 .aws/
+uploads/
 
 # --- Local data created while the app runs ---
 data/
 logs/
 *.db
 *.sqlite3
+*.sqlite
+*.db-journal
 
 # --- Python virtual environment and caches ---
 .venv/

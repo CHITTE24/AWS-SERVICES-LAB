@@ -14,10 +14,48 @@ if not os.getenv("LAB_SKIP_DOTENV"):
     load_dotenv(PROJECT_ROOT / ".env")
 
 
+def clean_aws_profile():
+    """Makes an empty AWS_PROFILE behave as if it were not set at all.
+
+    boto3 reads AWS_PROFILE by itself. The line "AWS_PROFILE=" in .env sets it to an empty
+    text "", and boto3 then looks for a profile literally named "" and fails with
+    "The config profile () could not be found". Removing the empty value lets boto3 use its
+    normal search instead: environment variables, the default profile, or the EC2 IAM role.
+    A real profile name (for example "lab-dev") is kept, with any stray spaces removed.
+    """
+    profile = os.environ.get("AWS_PROFILE")
+    if profile is None:
+        return  # Not set at all: nothing to do.
+    if profile.strip() == "":
+        del os.environ["AWS_PROFILE"]  # Empty or only spaces: treat it as unset.
+    else:
+        os.environ["AWS_PROFILE"] = profile.strip()  # A named profile: keep it, minus spaces.
+
+
+# Runs once when this file is first imported, right after .env has been loaded.
+clean_aws_profile()
+
+
 def read_bool(name, default):
     # Reads a true/false setting. Accepts "true", "1", or "yes" (any capitalisation) as true.
     value = os.getenv(name, default)
     return value.strip().lower() in ("true", "1", "yes")
+
+
+def read_int(name, default):
+    """Reads a whole-number setting, such as DB_PORT=5432.
+
+    An empty value (for example the line "DB_PORT=" in .env) uses the default instead of crashing.
+    A value that is not a number stops the app with a message that names the setting to fix.
+    """
+    value = os.getenv(name, "").strip()
+    if value == "":
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        raise ValueError(f"{name} must be a whole number (for example {default}), but it is '{value}'. "
+                         f"Fix it in .env.") from None
 
 
 def resolve_path(path_text):
@@ -54,7 +92,7 @@ def get_settings():
         "database_backend": os.getenv("DATABASE_BACKEND", "sqlite").strip().lower(),
         # RDS connection settings. These are NOT secret. The password comes from Secrets Manager.
         "db_host": os.getenv("DB_HOST", ""),
-        "db_port": int(os.getenv("DB_PORT", "5432")),
+        "db_port": read_int("DB_PORT", 5432),
         "db_name": os.getenv("DB_NAME", ""),
         "db_user": os.getenv("DB_USER", ""),
         # Only used in local mode (for example a PostgreSQL on your own computer). Ignored in aws mode.
@@ -67,7 +105,7 @@ def get_settings():
         # Never put the actual secret value in this file. (core/secret_store.py reads it.)
         "secret_name": os.getenv("AWS_SECRETS_MANAGER_SECRET_NAME", ""),
         # How long a retrieved secret is kept in memory before it is fetched again (seconds).
-        "secret_cache_seconds": int(os.getenv("SECRET_CACHE_SECONDS", "900")),
+        "secret_cache_seconds": read_int("SECRET_CACHE_SECONDS", 900),
         # Private S3 bucket for uploaded documents, and the KMS key that encrypts them (SSE-KMS).
         "s3_bucket_name": os.getenv("S3_BUCKET_NAME", ""),
         "s3_kms_key_arn": os.getenv("S3_KMS_KEY_ARN", ""),

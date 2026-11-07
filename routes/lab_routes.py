@@ -38,14 +38,23 @@ def security_configuration(request):
         ("Secure session cookie", "Configured" if settings["session_https_only"] else "Not Configured",
          "SESSION_HTTPS_ONLY=true: the login cookie is only sent over HTTPS (it is always HttpOnly and SameSite=Lax)."
          if settings["session_https_only"] else "SESSION_HTTPS_ONLY=false. Set it to true when the app is served over HTTPS."),
+        # Each row below has two explanations: the first when the setting is filled in, the second when it is empty.
         ("S3 bucket", "Configured" if settings["s3_bucket_name"] else "Not Configured",
-         "S3_BUCKET_NAME is set. Access is proven only by a successful upload."),
+         "S3_BUCKET_NAME is set. Access is proven only by a successful upload."
+         if settings["s3_bucket_name"] else
+         "S3_BUCKET_NAME is empty, so documents are not uploaded to S3. Set it after creating the bucket."),
         ("KMS key reference", "Configured" if settings["s3_kms_key_arn"] else "Not Configured",
-         "S3_KMS_KEY_ARN is set. This alone does NOT prove that objects are encrypted with it."),
+         "S3_KMS_KEY_ARN is set. This alone does NOT prove that objects are encrypted with it."
+         if settings["s3_kms_key_arn"] else
+         "S3_KMS_KEY_ARN is empty, so S3 uploads are refused (they must be SSE-KMS encrypted). "
+         "Set it to the key ARN after creating the KMS key."),
         ("SSE-KMS on uploads", "Unknown",
          "Verified separately for each upload: see the AWS KMS row in AWS Service Activity."),
         ("Secrets Manager reference", "Configured" if settings["secret_name"] else "Not Configured",
-         "AWS_SECRETS_MANAGER_SECRET_NAME is set. Use 'Check AWS environment' to verify it can be read."),
+         "AWS_SECRETS_MANAGER_SECRET_NAME is set. Use 'Check AWS environment' to verify it can be read."
+         if settings["secret_name"] else
+         "AWS_SECRETS_MANAGER_SECRET_NAME is empty, so no database password is read from Secrets Manager. "
+         "Set it to the secret's name or ARN (never the value) after creating the secret."),
     ]
     if submission_repository.using_rds():
         tls_on = settings["db_sslmode"] in ("require", "verify-ca", "verify-full")

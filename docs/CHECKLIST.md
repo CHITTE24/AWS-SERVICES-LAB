@@ -39,8 +39,8 @@ Status as of the initial build (v1). Update this file as items are verified.
 - [ ] The pages look right in your browser. Only the HTML was tested, not the visual appearance.
 - [ ] Experiments on an account with many resources (speed, pagination). moto data is tiny.
 - [ ] The Lambda Health experiment against real CloudWatch data. Tests used mocked numbers.
-- [ ] EC2 deployment (Phase E), including every item in the EC2 verification checklist.
-- [ ] Python 3.11 on EC2. Developed on 3.14; no 3.12+ features were used, but this is untested on 3.11.
+- [ ] EC2 deployment (docs/EC2_DEPLOYMENT.md), including every item in its section 15 verification checklist.
+- [ ] Python 3.12 on EC2 (Ubuntu 24.04 LTS). Developed on 3.14; the full test suite also passed on Ubuntu 24.04 with Python 3.12 (WSL), but not yet on a real EC2 instance.
 
 ## Known limitations and possible next steps
 
