@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge %}
+{% block title %}Workflow {{ view.workflow_id[:8] }} · {{ app_title }}{% endblock %}
+{% block content %}
+<p><a href="/workflows">← Live Workflow Monitor</a></p>
+<h1>Workflow <code>{{ view.workflow_id[:8] }}…</code> <span id="overall">{{ status_badge(view.overall) }}</span></h1>
+
+{% if view.simulated %}
+<div class="alert simulated-banner"><strong>SIMULATED workflow.</strong> Nothing was sent to AWS.
+  Every row marked SIMULATED is a demonstration, not a real AWS event.</div>
+{% endif %}
+
+<p class="small">File: <strong>{{ view.file_name }}</strong> ({{ "{:,}".format(view.file_size) }} bytes) ·
+  Started {{ view.created_at[:19] | replace("T", " ") }} UTC ·
+  <span id="poll-status">{% if view.poll %}Updating automatically…{% else %}Not updating automatically.{% endif %}</span></p>
+
+{% if view.stages %}
+<div class="table-scroll">
+<table class="data-table" id="stages">
+  <tr><th>#</th><th>Stage</th><th>State</th><th>Time</th><th>Details</th></tr>
+  {% for stage in view.stages %}
+  {# data-stage lets static/workflow.js find and update this row. #}
+  <tr data-stage="{{ stage.id }}">
+    <td>{{ loop.index }}</td>
+    <td>{{ stage.name }}</td>
+    <td class="stage-state">{{ status_badge(stage.state) }}
+      {% if stage.simulated %}<span class="tag-simulated">SIMULATED</span>{% endif %}
+      {% if stage.attempt and stage.attempt > 1 %}<span class="small">attempt {{ stage.attempt }}</span>{% endif %}</td>
+    <td class="stage-time">{% if stage.duration_seconds is not none %}{{ "%.2f" | format(stage.duration_seconds) }} s{% else %}-{% endif %}</td>
+    <td class="stage-detail">{{ stage.detail }}</td>
+  </tr>
+  {% endfor %}
+</table>
+</div>
+{% else %}
+<p class="muted">The stage details were deleted automatically after the retention period (WORKFLOW_RETENTION_DAYS).
+  The workflow is still listed, and its snapshot is on the History page.</p>
+{% endif %}
+
+<p class="small"><a href="/workflows/{{ view.workflow_id }}">Reload now</a>
+  · "Timed Out" means no result before the deadline. It is not proof of failure: a late result still updates the stage.</p>
+<noscript><p class="small">JavaScript is off: reload the page to see updates.</p></noscript>
+
+{# Settings for static/workflow.js: where to ask, and whether and when to ask again. #}
+<div id="workflow-monitor" data-status-url="/workflows/{{ view.workflow_id }}/status"
+     data-poll="{{ 'true' if view.poll else 'false' }}" data-next="{{ view.next_poll_ms or 0 }}"></div>
+<script src="/static/workflow.js"></script>
+{% endblock %}

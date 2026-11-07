@@ -117,6 +117,22 @@ def get_settings():
         # Optional messaging. Leave empty to skip.
         "sns_topic_arn": os.getenv("SNS_TOPIC_ARN", ""),
         "sqs_queue_url": os.getenv("SQS_QUEUE_URL", ""),
+        # ---- Live Workflow Monitor (experiments/live_workflow.py) ----
+        # Where real workflows keep their stages: "sqlite" (local) or "dynamodb" (needed once Lambda reports).
+        "workflow_backend": os.getenv("WORKFLOW_BACKEND", "sqlite").strip().lower(),
+        "workflow_table_name": os.getenv("WORKFLOW_TABLE_NAME", "aws-lab-workflows").strip(),
+        # The Lambda function triggered by S3 events. Empty: no Lambda stages are expected.
+        "workflow_lambda_name": os.getenv("WORKFLOW_LAMBDA_NAME", "").strip(),
+        # Deadlines. When one passes, the stage shows "Timed Out", which is NOT proof of failure:
+        # a late result still updates the stage.
+        "workflow_event_deadline_seconds": read_int("WORKFLOW_EVENT_DEADLINE_SECONDS", 120),
+        "workflow_processing_deadline_seconds": read_int("WORKFLOW_PROCESSING_DEADLINE_SECONDS", 300),
+        # Cost controls: the browser stops polling after this many seconds, and at most this many REAL
+        # workflows per user per hour (simulated ones are free and not counted).
+        "workflow_poll_limit_seconds": read_int("WORKFLOW_POLL_LIMIT_SECONDS", 300),
+        "workflow_max_per_hour": read_int("WORKFLOW_MAX_PER_HOUR", 30),
+        # DynamoDB deletes workflow stages after this many days (Time To Live). The local list keeps them.
+        "workflow_retention_days": read_int("WORKFLOW_RETENTION_DAYS", 7),
         # Logging detail level and file location.
         "log_level": os.getenv("LOG_LEVEL", "INFO").upper(),
         "log_file": PROJECT_ROOT / "logs" / "app.log",

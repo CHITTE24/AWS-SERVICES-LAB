@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge %}
+{% block title %}Live Workflow Monitor · {{ app_title }}{% endblock %}
+{% block content %}
+<h1>Live Workflow Monitor</h1>
+<p class="muted">Upload a file and watch each stage of a real event-driven AWS workflow update by itself.
+  A stage is <strong>Completed</strong> only when AWS's own answer proves it. Simulated workflows are clearly labelled and send nothing to AWS.
+  This page is separate from <a href="/">Check AWS environment</a>, which only tests connectivity.</p>
+
+{% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+
+<section class="card">
+  <h2>Start a workflow</h2>
+  {# "run-form" makes static/app.js disable the button after one click. The hidden ID also blocks duplicates. #}
+  <form method="post" action="/workflows" enctype="multipart/form-data" class="run-form">
+    <input type="hidden" name="workflow_id" value="{{ new_workflow_id }}">
+    <label>
+      File (PDF, TXT, DOCX, or CSV, maximum {{ max_megabytes }} MB)
+      <input name="document" type="file" accept=".pdf,.txt,.docx,.csv" required>
+    </label>
+    <fieldset class="choice-group">
+      <legend>Mode</legend>
+      <label class="choice">
+        <input type="radio" name="mode" value="aws" {% if real_problem %}disabled{% else %}checked{% endif %}>
+        Real AWS: upload to S3 with SSE-KMS, then verify it independently
+      </label>
+      {% if real_problem %}<p class="muted small">{{ real_problem }}</p>{% endif %}
+      <label class="choice">
+        <input type="radio" name="mode" value="simulated" {% if real_problem %}checked{% endif %}>
+        <span class="badge badge-simulated">Simulated</span> offline demonstration: nothing is sent to AWS
+      </label>
+      <label>
+        Simulation scenario (used only in Simulated mode)
+        <select name="scenario">
+          {% for scenario_id, (label, _) in scenarios.items() %}<option value="{{ scenario_id }}">{{ label }}</option>{% endfor %}
+        </select>
+      </label>
+    </fieldset>
+    <button type="submit">Start workflow</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Workflow history</h2>
+  <p class="muted small">Your 10 newest workflows, including failed and unfinished ones. Every workflow is also on the <a href="/history">History</a> page.</p>
+  {% if workflows %}
+  <div class="table-scroll">
+  <table class="data-table">
+    <tr><th>Started (UTC)</th><th>File</th><th>Mode</th><th>Overall</th><th></th></tr>
+    {% for workflow in workflows %}
+    <tr>
+      <td>{{ workflow.created_at[:19] | replace("T", " ") }}</td>
+      <td>{{ workflow.file_name }}</td>
+      <td>{% if workflow.simulated %}<span class="tag-simulated">SIMULATED</span>{% else %}Real AWS{% endif %}</td>
+      <td>{{ status_badge(workflow.overall) }}</td>
+      <td><a href="/workflows/{{ workflow.workflow_id }}">Open</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  {% else %}
+  <p class="muted">No workflows yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

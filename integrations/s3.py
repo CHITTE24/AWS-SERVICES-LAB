@@ -75,13 +75,14 @@ def count_objects(bucket_name, region=None, max_objects=1000):
     }
 
 
-def upload_document(bucket_name, object_key, content, content_type, kms_key_arn):
+def upload_document(bucket_name, object_key, content, content_type, kms_key_arn, metadata=None):
     """Uploads one private document, encrypted with SSE-KMS (server-side encryption with an AWS KMS key).
 
     bucket_name / object_key: where to store the file. The key is the file's "path" inside the bucket.
     content: the file's bytes.
     content_type: for example "application/pdf".
     kms_key_arn: the customer-managed KMS key that S3 must use to encrypt the file.
+    metadata: optional small labels stored with the object, for example {"workflow-id": "..."}.
     Returns: what S3 reports it actually did, so the caller can VERIFY the encryption.
     """
     s3 = get_client("s3")
@@ -93,10 +94,30 @@ def upload_document(bucket_name, object_key, content, content_type, kms_key_arn)
         ContentType=content_type,
         ServerSideEncryption="aws:kms",  # Ask S3 to encrypt with KMS ...
         SSEKMSKeyId=kms_key_arn,  # ... using exactly this key.
+        Metadata=metadata or {},
     )
     return {
         # S3 answers with the encryption it applied. "aws:kms" means SSE-KMS.
         "encryption": response.get("ServerSideEncryption", ""),
         # The ARN of the KMS key S3 used.
         "kms_key_id": response.get("SSEKMSKeyId", ""),
+        # S3's identifier for this exact upload. (With SSE-KMS it is NOT an MD5 checksum of the file.)
+        "etag": response.get("ETag", ""),
+    }
+
+
+def head_object(bucket_name, object_key):
+    """Reads an object's METADATA only (no content is downloaded or decrypted). Needs s3:GetObject.
+
+    No checksum is requested (ChecksumMode is not set), so this is the cheapest possible check.
+    Returns: size, ETag, encryption, KMS key, and the object's own metadata labels.
+    Raises ClientError "404" if the object does not exist.
+    """
+    response = get_client("s3").head_object(Bucket=bucket_name, Key=object_key)
+    return {
+        "size": response.get("ContentLength", 0),
+        "etag": response.get("ETag", ""),
+        "encryption": response.get("ServerSideEncryption", ""),
+        "kms_key_id": response.get("SSEKMSKeyId", ""),
+        "metadata": response.get("Metadata", {}),
     }

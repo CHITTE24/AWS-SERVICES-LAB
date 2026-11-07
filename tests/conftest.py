@@ -24,7 +24,8 @@ os.environ["APP_MODE"] = "local"
 os.environ["DATABASE_BACKEND"] = "sqlite"
 # Tests start with NO AWS resources configured. Individual tests add them with monkeypatch.setenv.
 for name in ("S3_BUCKET_NAME", "S3_KMS_KEY_ARN", "LAMBDA_FUNCTION_NAME", "SNS_TOPIC_ARN", "SQS_QUEUE_URL",
-             "AWS_SECRETS_MANAGER_SECRET_NAME", "DB_HOST", "DB_PASSWORD", "SESSION_HTTPS_ONLY"):
+             "AWS_SECRETS_MANAGER_SECRET_NAME", "DB_HOST", "DB_PASSWORD", "SESSION_HTTPS_ONLY",
+             "WORKFLOW_BACKEND", "WORKFLOW_LAMBDA_NAME", "WORKFLOW_MAX_PER_HOUR"):
     os.environ.pop(name, None)
 
 # --- Fake AWS credentials, so a mistake can never reach a real account ---
@@ -58,6 +59,19 @@ def fake_aws():
     # Every AWS call made inside a test that uses this fixture goes to moto, not to real AWS.
     with mock_aws():
         yield
+
+
+@pytest.fixture
+def workflow_table(fake_aws, monkeypatch):
+    # A FAKE DynamoDB table (inside moto) with the same design as the real aws-lab-workflows table.
+    import boto3  # Imported here because it is only needed by this fixture.
+    boto3.client("dynamodb", region_name="us-east-1").create_table(
+        TableName="aws-lab-workflows", BillingMode="PAY_PER_REQUEST",
+        KeySchema=[{"AttributeName": "workflow_id", "KeyType": "HASH"}, {"AttributeName": "item", "KeyType": "RANGE"}],
+        AttributeDefinitions=[{"AttributeName": "workflow_id", "AttributeType": "S"},
+                              {"AttributeName": "item", "AttributeType": "S"}])
+    monkeypatch.setenv("WORKFLOW_BACKEND", "dynamodb")
+    return "aws-lab-workflows"
 
 
 @pytest.fixture

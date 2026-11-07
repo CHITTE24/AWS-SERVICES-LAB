@@ -17,7 +17,9 @@ from core.config import PROJECT_ROOT, get_settings  # Settings from .env.
 from core.logging_setup import setup_logging  # Log configuration.
 from repositories.history_repository import create_tables  # Prepares the SQLite database.
 from repositories.submission_repository import create_submissions_table, using_rds  # The lab_submissions table.
-from routes import auth_routes, dashboard_routes, experiment_routes, history_routes, lab_routes  # The pages.
+from repositories.workflow_repository import create_tables as create_workflow_tables  # Live Workflow Monitor.
+from routes import (auth_routes, dashboard_routes, experiment_routes, history_routes, lab_routes,  # The pages.
+                    workflow_routes)
 
 settings = get_settings()
 setup_logging(settings["log_level"], settings["log_file"])
@@ -25,6 +27,8 @@ logger = logging.getLogger(__name__)
 
 # Creates the history table the first time the app runs. Later runs leave it unchanged.
 create_tables()
+# The Live Workflow Monitor's local tables (its workflow list, and simulated or SQLite-stored stages).
+create_workflow_tables()
 # The local SQLite submissions table is created automatically. The RDS table is created once,
 # by hand, with "python scripts/init_database.py", so starting the app never needs RDS to be reachable.
 if not using_rds():
@@ -59,6 +63,7 @@ app.include_router(lab_routes.router)
 app.include_router(dashboard_routes.router)
 app.include_router(experiment_routes.router)
 app.include_router(history_routes.router)
+app.include_router(workflow_routes.router)
 
 
 @app.exception_handler(LoginRequired)

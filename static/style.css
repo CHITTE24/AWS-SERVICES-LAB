@@ -81,6 +81,20 @@ form.inline { display: inline; }
 .badge-unavailable, .badge-configuration-error { background: var(--error); }
 /* AMBER: unknown or not proven yet. */
 .badge-simulated, .badge-unknown, .badge-pending, .badge-timed-out, .badge-no-data { background: var(--warning); }
+/* Live Workflow Monitor states (see experiments/workflow_states.py). */
+.badge-completed { background: var(--success); }
+.badge-running { background: #2b6cb0; }
+.badge-retrying { background: var(--warning); }
+.badge-expired { background: var(--muted); }
+/* A small outlined label on every row that did NOT come from a real AWS event. */
+.tag-simulated { display: inline-block; padding: 1px 6px; border: 1px dashed var(--warning); border-radius: 8px;
+                 color: var(--warning); font-size: 0.7rem; font-weight: 700; vertical-align: middle; }
+.simulated-banner { border-left: 4px solid var(--warning); }
+/* Radio buttons sit beside their text instead of on their own line. */
+.choice-group { border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; }
+.choice { font-weight: 400; }
+.choice input { display: inline-block; width: auto; margin: 0 6px 0 0; }
+select { display: block; padding: 6px; margin-top: 4px; }
 /* GREY: nothing was checked. */
 .badge-skipped, .badge-not-configured, .badge-not-checked { background: var(--muted); }
 /* The "Last checked" line above the environment check results. */
