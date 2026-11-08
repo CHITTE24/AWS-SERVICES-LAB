@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Not found · {{ app_title }}{% endblock %}
+{# "heading" is "Not found" unless the page passes another one, for example "Server error". #}
+{% block title %}{{ heading or "Not found" }} · {{ app_title }}{% endblock %}
 {% block content %}
 <div class="card narrow">
-  <h1>Not found</h1>
+  <h1>{{ heading or "Not found" }}</h1>
   <p>{{ message }}</p>
   <p><a href="/">Back to the main page</a></p>
 </div>

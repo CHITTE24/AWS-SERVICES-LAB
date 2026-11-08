@@ -8,13 +8,16 @@ import logging  # Writes startup messages to the log.
 import secrets  # Creates a temporary session secret if none is configured.
 
 from fastapi import FastAPI, Request  # The web framework.
-from fastapi.responses import RedirectResponse  # Sends the browser to another URL.
+from fastapi.exception_handlers import http_exception_handler  # FastAPI's normal answer for 404, 405, ...
+from fastapi.responses import JSONResponse, RedirectResponse  # JSON answers; sends the browser to another URL.
 from fastapi.staticfiles import StaticFiles  # Serves CSS and JavaScript files.
+from starlette.exceptions import HTTPException as StarletteHTTPException  # Raised for unknown URLs (404).
 from starlette.middleware.sessions import SessionMiddleware  # Signed login cookies.
 
 from auth.access import LoginRequired  # Raised by pages that need a logged-in user.
 from core.config import PROJECT_ROOT, get_settings  # Settings from .env.
 from core.logging_setup import setup_logging  # Log configuration.
+from core.templates import render_not_found, templates  # The "Not found" page, and the template engine.
 from repositories.history_repository import create_tables  # Prepares the SQLite database.
 from repositories.submission_repository import create_submissions_table, using_rds  # The lab_submissions table.
 from repositories.workflow_repository import create_tables as create_workflow_tables  # Live Workflow Monitor.
@@ -74,6 +77,47 @@ app.include_router(architecture_routes.router)
 def redirect_to_login(request: Request, error: LoginRequired):
     # When a protected page is opened without a login, send the browser to the login page.
     return RedirectResponse("/login", status_code=303)
+
+
+def wants_html(request):
+    """True when a person's browser asked for a page (not a script asking for JSON data)."""
+    # The JSON APIs (/api/... and the Live Monitor's /status) keep their JSON answers.
+    if request.url.path.startswith("/api/") or request.url.path.endswith("/status"):
+        return False
+    return "text/html" in request.headers.get("accept", "")
+
+
+@app.exception_handler(StarletteHTTPException)
+async def friendly_http_error(request: Request, error: StarletteHTTPException):
+    """Shows the app's own "Not found" page for an unknown address, instead of raw JSON text.
+
+    Only 404s opened in a browser are changed. Every other case (API calls, 405, ...) keeps FastAPI's
+    normal answer, so nothing that scripts rely on changes.
+    """
+    if error.status_code == 404 and wants_html(request):
+        return render_not_found(request, f"There is no page at {request.url.path}.")
+    return await http_exception_handler(request, error)
+
+
+@app.exception_handler(Exception)
+def unexpected_error(request: Request, error: Exception):
+    """Last safety net: any error that no other code handled (it would otherwise be an HTTP 500).
+
+    1. Writes the full error (the "traceback") to logs/app.log, with a short reference code.
+       Without this, the details only reached the terminal / journalctl, never logs/app.log.
+    2. Shows the user a friendly page with the same reference code. The technical details are
+       NEVER shown in the browser, because they can reveal file paths or settings.
+    To find the cause on EC2:  grep <reference> logs/app.log   (or: journalctl -u aws-services-lab)
+    """
+    reference = secrets.token_hex(4)  # For example "3f9a1c2b": connects the page to the log line.
+    logger.exception("Unexpected error %s on %s %s", reference, request.method, request.url.path)
+    message = (f"Something went wrong on the server. Reference: {reference}. "
+               "The details were written to logs/app.log.")
+    if not wants_html(request):
+        return JSONResponse({"error": message}, status_code=500)
+    # This handler runs OUTSIDE the session layer, so it cannot use render() (which reads the session).
+    context = {"app_title": settings["app_title"], "username": None, "heading": "Server error", "message": message}
+    return templates.TemplateResponse(request, "error.html", context, status_code=500)
 
 
 @app.get("/health")

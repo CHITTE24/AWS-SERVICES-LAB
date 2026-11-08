@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   {# "block title" lets each page set its own browser-tab title. #}
   <title>{% block title %}{{ app_title }}{% endblock %}</title>
+  {# An empty icon: stops the browser asking for /favicon.ico, which does not exist (a 404 in the console). #}
+  <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
