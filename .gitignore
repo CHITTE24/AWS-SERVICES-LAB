@@ -31,3 +31,6 @@ __pycache__/
 .idea/
 .DS_Store
 Thumbs.db
+
+# --- Official AWS Architecture Icons: copied locally, not committed (see docs/ARCHITECTURE_MAP.md) ---
+static/icons/aws/

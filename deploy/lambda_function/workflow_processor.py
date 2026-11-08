@@ -28,6 +28,10 @@ working on it": this invocation stops quietly.
 Crashes: if an attempt dies (for example the 15-second Lambda timeout), its lease expires and the next
 invocation takes over. The lease is always longer than the function's remaining run time, so a slow but
 living attempt is never taken over.
+Identity: every stage this function writes also carries "processed_by_arn" (this function's own ARN, which
+contains its account and region) and "event_bucket", plus "outcome_kind" (success, mismatch, configuration,
+retrying, timeout, or aws_error). The web app uses these for exact evidence instead of guessing from settings.
+
 Results: Failed and Retrying are accepted only from the attempt that holds the current claim, so an older
 attempt can never overwrite a newer one. Completed (proven success) is accepted from any attempt that
 still finds the stage unfinished, and it is final: nothing can overwrite it.
@@ -212,18 +216,20 @@ def is_refused(error):
     return isinstance(error, ClientError) and error_code(error) == "ConditionalCheckFailedException"
 
 
-def complete_event_stage(table, workflow_id, detail):
+def complete_event_stage(table, workflow_id, detail, function_arn="", bucket=""):
     """Stage 5 -> Completed. Allowed from Pending or Timed Out (a late event still counts). True if it changed."""
     try:
         table.update_item(
             Key={"workflow_id": workflow_id, "item": EVENT_STAGE},
             UpdateExpression="SET #state = :done, #detail = :detail, #source = :source, #updated = :now, "
-                             "#finished = :now",
+                             "#finished = :now, #fn = :fn, #bucket = :bucket, #kind = :kind",
             ConditionExpression="attribute_exists(#wid) AND #state IN (:pending, :timed_out)",
             ExpressionAttributeNames={"#wid": "workflow_id", "#state": "state", "#detail": "detail",
-                                      "#source": "source", "#updated": "updated_at", "#finished": "finished_at"},
+                                      "#source": "source", "#updated": "updated_at", "#finished": "finished_at",
+                                      "#fn": "processed_by_arn", "#bucket": "event_bucket", "#kind": "outcome_kind"},
             ExpressionAttributeValues={":done": COMPLETED, ":detail": detail, ":source": SOURCE, ":now": now_text(),
-                                       ":pending": PENDING, ":timed_out": TIMED_OUT})
+                                       ":pending": PENDING, ":timed_out": TIMED_OUT, ":fn": function_arn,
+                                       ":bucket": bucket, ":kind": "success"})
         return True
     except ClientError as error:
         if is_refused(error):
@@ -231,7 +237,7 @@ def complete_event_stage(table, workflow_id, detail):
         raise
 
 
-def claim_attempt(table, workflow_id, request_id, lease_seconds, max_attempts):
+def claim_attempt(table, workflow_id, request_id, lease_seconds, max_attempts, function_arn="", bucket=""):
     """Starts the next attempt with ONE atomic, conditional update. Returns the new attempt number, or None.
 
     Succeeds only if the stage is waiting (Pending / Retrying), or Running / Timed Out WITHOUT a live lease
@@ -243,8 +249,8 @@ def claim_attempt(table, workflow_id, request_id, lease_seconds, max_attempts):
             Key={"workflow_id": workflow_id, "item": LAMBDA_STAGE},
             UpdateExpression="SET #state = :running, #detail = :detail, #source = :source, #updated = :now_text, "
                              "#started = if_not_exists(#started, :now_text), #lease = :lease_until, "
-                             "#owner = :request, #attempt = if_not_exists(#attempt, :zero) + :one "
-                             "REMOVE #finished",
+                             "#owner = :request, #attempt = if_not_exists(#attempt, :zero) + :one, "
+                             "#fn = :fn, #bucket = :bucket REMOVE #finished, #kind",
             # Timed Out counts like Running here: if a live attempt still holds the lease, wait for it.
             ConditionExpression="attribute_exists(#wid) "
                                 "AND (#state IN (:pending, :retrying) "
@@ -254,12 +260,14 @@ def claim_attempt(table, workflow_id, request_id, lease_seconds, max_attempts):
             ExpressionAttributeNames={"#wid": "workflow_id", "#state": "state", "#detail": "detail",
                                       "#source": "source", "#updated": "updated_at", "#started": "started_at",
                                       "#lease": "lease_until", "#owner": "lease_owner", "#attempt": "attempt",
-                                      "#finished": "finished_at"},
+                                      "#finished": "finished_at", "#fn": "processed_by_arn",
+                                      "#bucket": "event_bucket", "#kind": "outcome_kind"},
             ExpressionAttributeValues={":running": RUNNING, ":pending": PENDING, ":retrying": RETRYING,
                                        ":timed_out": TIMED_OUT, ":source": SOURCE, ":now_text": now_text(),
                                        ":detail": "Lambda is verifying the object with HeadObject.",
                                        ":lease_until": now + lease_seconds, ":request": request_id,
-                                       ":zero": 0, ":one": 1, ":now": now, ":max": max_attempts},
+                                       ":zero": 0, ":one": 1, ":now": now, ":max": max_attempts,
+                                       ":fn": function_arn, ":bucket": bucket},
             ReturnValues="ALL_NEW")
         return int(response["Attributes"]["attempt"])
     except ClientError as error:
@@ -268,7 +276,7 @@ def claim_attempt(table, workflow_id, request_id, lease_seconds, max_attempts):
         raise
 
 
-def finish_attempt(table, workflow_id, attempt, new_state, detail):
+def finish_attempt(table, workflow_id, attempt, new_state, detail, kind=None):
     """Writes the result of an attempt. Returns True if it was written.
 
     Completed: accepted from ANY attempt while the stage is unfinished (proven success; then final).
@@ -280,6 +288,10 @@ def finish_attempt(table, workflow_id, attempt, new_state, detail):
     values = {":state": new_state, ":detail": detail, ":source": SOURCE, ":now": now_text(),
               ":running": RUNNING, ":timed_out": TIMED_OUT}
     expression = "SET #state = :state, #detail = :detail, #source = :source, #updated = :now"
+    if kind:  # What exactly happened (see the module text), so the web app never guesses from the detail.
+        names["#kind"] = "outcome_kind"
+        values[":kind"] = kind
+        expression += ", #kind = :kind"
     expression += ", #finished = :now REMOVE #lease" if new_state in FINAL_STATES else " REMOVE #finished, #lease"
     if new_state == COMPLETED:
         values.update({":pending": PENDING, ":retrying": RETRYING})
@@ -306,13 +318,13 @@ def fail_after_last_attempt(table, workflow_id, stage, max_attempts):
         table.update_item(
             Key={"workflow_id": workflow_id, "item": LAMBDA_STAGE},
             UpdateExpression="SET #state = :failed, #detail = :detail, #source = :source, #updated = :now, "
-                             "#finished = :now REMOVE #lease",
+                             "#finished = :now, #kind = :kind REMOVE #lease",
             # Only if nothing changed since we looked (same state, same attempt count).
             ConditionExpression="#state = :seen_state AND #attempt = :seen_attempt",
             ExpressionAttributeNames={"#state": "state", "#detail": "detail", "#source": "source",
                                       "#updated": "updated_at", "#finished": "finished_at", "#lease": "lease_until",
-                                      "#attempt": "attempt"},
-            ExpressionAttributeValues={":failed": FAILED, ":source": SOURCE, ":now": now_text(),
+                                      "#attempt": "attempt", "#kind": "outcome_kind"},
+            ExpressionAttributeValues={":failed": FAILED, ":source": SOURCE, ":now": now_text(), ":kind": "timeout",
                                        ":seen_state": stage["state"], ":seen_attempt": stage["attempt"],
                                        ":detail": f"All {max_attempts} attempts were used without a result "
                                                   "(the last attempt stopped or timed out). Retries exhausted."})
@@ -349,7 +361,12 @@ def verify_object(details, meta):
 
 # ---------------------------------------------------------------- one record
 
-def process_record(record, request_id, lease_seconds):
+def is_timeout(error):
+    # Timeouts are reported as "timeout", other temporary problems (throttling, 5xx) as "aws_error".
+    return isinstance(error, (ConnectTimeoutError, ReadTimeoutError)) or "Timeout" in error_code(error)
+
+
+def process_record(record, request_id, lease_seconds, function_arn=""):
     """Processes one S3 event record. Returns a short result word (also written to the logs)."""
     details, reason = parse_record(record)
     if details is None:
@@ -370,11 +387,13 @@ def process_record(record, request_id, lease_seconds):
     delay = delivery_seconds(details["event_time"])
     delay_text = f" {delay:.1f} s after the object was created" if delay is not None else ""
     complete_event_stage(table, workflow_id,
-                         f"S3 {details['event_name']} event received by Lambda{delay_text} (request {short(request_id)}).")
+                         f"S3 {details['event_name']} event received by Lambda{delay_text} (request {short(request_id)}).",
+                         function_arn, details["bucket"])
 
     # ---- Stage 6: claim the next attempt (atomic). Refused = duplicate, in progress elsewhere, or used up.
     max_attempts = settings()["max_attempts"]
-    attempt = claim_attempt(table, workflow_id, request_id, lease_seconds, max_attempts)
+    attempt = claim_attempt(table, workflow_id, request_id, lease_seconds, max_attempts, function_arn,
+                            details["bucket"])
     if attempt is None:
         stage = read_item(table, workflow_id, LAMBDA_STAGE) or {}
         stage["attempt"] = int(stage.get("attempt", 0) or 0)
@@ -395,7 +414,7 @@ def process_record(record, request_id, lease_seconds):
     if not settings()["expected_kms_key_arn"]:
         finish_attempt(table, workflow_id, attempt, FAILED,
                        "Configuration Error: EXPECTED_KMS_KEY_ARN is not set on the Lambda function, so the "
-                       "encryption cannot be verified. Permanent error: not retried.")
+                       "encryption cannot be verified. Permanent error: not retried.", "configuration")
         return "failed"
 
     try:
@@ -406,27 +425,28 @@ def process_record(record, request_id, lease_seconds):
         if not is_temporary(error):
             finish_attempt(table, workflow_id, attempt, FAILED,
                            f"{PERMANENT_HELP.get(code, f'AWS returned {code}.')} Permanent error: not retried, "
-                           "because another attempt would fail the same way.")
+                           "because another attempt would fail the same way.", "aws_error")
             return "failed"
         if attempt < max_attempts:
             written = finish_attempt(table, workflow_id, attempt, RETRYING,
                                      f"Temporary error ({code}) on attempt {attempt} of {max_attempts}. Lambda "
-                                     "retries automatically; this is not a failure yet.")
+                                     "retries automatically; this is not a failure yet.", "retrying")
             return "retrying" if written else "stale"
         finish_attempt(table, workflow_id, attempt, FAILED,
                        f"Temporary error ({code}) on the last attempt ({attempt} of {max_attempts}). "
-                       "Retries exhausted.")
+                       "Retries exhausted.", "timeout" if is_timeout(error) else "aws_error")
         return "failed"
 
     if problems:
         finish_attempt(table, workflow_id, attempt, FAILED,
-                       "Lambda's HeadObject check failed: " + "; ".join(problems) + ". Permanent error: not retried.")
+                       "Lambda's HeadObject check failed: " + "; ".join(problems) + ". Permanent error: not retried.",
+                       "mismatch")
         return "failed"
 
     finish_attempt(table, workflow_id, attempt, COMPLETED,
                    f"Lambda independently verified the object on attempt {attempt}: {facts['size']:,} bytes, the "
                    f"workflow-id label and the event's ETag match, aws:kms with the expected key ({facts['kms_key']}). "
-                   "The content was not read.")
+                   "The content was not read.", "success")
     return "completed"
 
 
@@ -435,11 +455,12 @@ def process_record(record, request_id, lease_seconds):
 def lambda_handler(event, context):
     """Lambda calls this with an S3 event (usually one record). Raises only to ask Lambda to retry."""
     request_id = getattr(context, "aws_request_id", "") or "no-request-id"  # For diagnostics only.
+    function_arn = getattr(context, "invoked_function_arn", "") or ""  # This function's identity (account, region).
     lease_seconds = lease_length(context)
     results = []
     for record in event.get("Records", []):
         try:
-            result = process_record(record, request_id, lease_seconds)
+            result = process_record(record, request_id, lease_seconds, function_arn)
         except Exception as error:
             # Reached for DynamoDB problems (S3 problems are handled inside process_record).
             if is_temporary(error):

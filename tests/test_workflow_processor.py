@@ -80,7 +80,9 @@ def s3_event(key, event_name="ObjectCreated:Put", bucket=BUCKET, size=None, etag
 
 def invoke(event, request_id=None):
     # Every invocation gets its own request ID unless a test chooses one, exactly like real Lambda.
-    return processor.lambda_handler(event, SimpleNamespace(aws_request_id=request_id or uuid.uuid4().hex))
+    # Like real Lambda: a fresh request ID per invocation, and the function's own ARN (account, region, name).
+    return processor.lambda_handler(event, SimpleNamespace(aws_request_id=request_id or uuid.uuid4().hex,
+                                                           invoked_function_arn="arn:aws:lambda:us-east-1:123456789012:function:aws-lab-workflow-processor"))
 
 
 def stages(workflow_id):

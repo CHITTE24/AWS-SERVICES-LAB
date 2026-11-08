@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Architecture Map · {{ app_title }}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/architecture.css">
+<div class="arch-page" id="arch-page" data-mode="{{ mode }}">
+  <h1>Architecture Map
+    <span class="badge {{ 'badge-running' if mode == 'design' else 'badge-configured' }}">{{ "Design mode" if mode == "design" else "Presentation mode" }}</span>
+  </h1>
+  <p class="muted small">You design the architecture; the colours come ONLY from recorded verification evidence for the exact
+    resource or operation. Drawing a box or arrow proves nothing (grey). Nothing here creates, connects, or changes anything in AWS.
+    {% if mode == "design" %}<a href="/architecture?mode=present">Switch to Presentation mode</a>{% else %}<a href="/architecture">Switch to Design mode</a>{% endif %}</p>
+
+  <div class="arch-toolbar">
+    <label class="inline-label">Diagram <select id="diagram-select" aria-label="Diagram"></select></label>
+    {% if mode == "design" %}
+    <button type="button" id="btn-new">New blank</button>
+    <button type="button" id="btn-starter" title="A drawing of the connections this app's code makes with your .env settings. Nothing is verified by drawing it.">New from this app's settings</button>
+    <button type="button" id="btn-save">Save</button>
+    <button type="button" id="btn-connect" title="Click the source box, then the target box.">Connect</button>
+    <button type="button" id="btn-delete-diagram">Delete drawing</button>
+    <button type="button" id="btn-export">Export JSON</button>
+    <label class="file-button">Import JSON<input type="file" id="import-file" accept="application/json,.json"></label>
+    {% endif %}
+    <button type="button" id="btn-layout">Auto-layout</button>
+    <button type="button" id="btn-fit">Fit</button>
+    <button type="button" id="btn-zoom-in" aria-label="Zoom in">+</button>
+    <button type="button" id="btn-zoom-out" aria-label="Zoom out">−</button>
+    <button type="button" id="btn-refresh">Refresh evidence</button>
+    <span id="arch-status" class="small" role="status"></span>
+  </div>
+
+  <div class="arch-main">
+    {% if mode == "design" %}
+    <aside class="arch-palette" aria-label="Add a resource box">
+      <input id="palette-search" type="search" placeholder="Search services" aria-label="Search services">
+      <div id="palette-list"></div>
+    </aside>
+    {% endif %}
+    <div id="cy" class="arch-canvas" aria-label="Architecture diagram"></div>
+    <aside class="arch-details" id="details" aria-live="polite"><p class="muted">Select a box or an arrow to see its
+      configuration, IAM requirements, verification evidence, and troubleshooting.</p></aside>
+  </div>
+
+  <div class="arch-legend small" aria-label="Legend">
+    <span><i class="line line-green"></i> ✓ Verified (automatic evidence)</span>
+    <span><i class="line line-red"></i> ✗ Failed</span>
+    <span><i class="line line-yellow"></i> ! Partial, configuration problem, or stale (older than the freshness window)</span>
+    <span><i class="line line-gray line-dashed"></i> – Not verified / design only</span>
+    <span><i class="line line-green line-dotted"></i> <strong>MANUAL</strong> attested by a person (dotted)</span>
+    <span id="legend-window"></span>
+  </div>
+  <noscript><p class="alert alert-error">The Architecture Map needs JavaScript.</p></noscript>
+</div>
+{# Local copies only (static/vendor/VERSIONS.txt): no CDN is used. #}
+<script src="/static/vendor/cytoscape-3.34.4/cytoscape.min.js"></script>
+<script src="/static/vendor/cytoscape-dagre-4.0.1/cytoscape-dagre.min.js"></script>
+<script src="/static/architecture.js"></script>
+{% endblock %}

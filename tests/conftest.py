@@ -18,6 +18,7 @@ TEST_PASSWORD = "test-password-123"
 os.environ["LAB_SKIP_DOTENV"] = "1"  # Ignores your personal .env file.
 os.environ["SESSION_SECRET"] = "test-session-secret"
 os.environ["DATABASE_PATH"] = os.path.join(TEST_FOLDER, "test.db")
+os.environ["ARCHITECTURE_DATABASE_PATH"] = os.path.join(TEST_FOLDER, "architecture.db")
 os.environ["ALLOW_WRITE_OPERATIONS"] = "false"
 os.environ["AWS_REGION"] = "us-east-1"
 os.environ["APP_MODE"] = "local"
@@ -44,6 +45,17 @@ from moto import mock_aws  # noqa: E402  Replaces AWS with an in-memory fake.
 
 from core import secret_store  # noqa: E402  Its cache is cleared between tests.
 from main import app  # noqa: E402  The web application under test.
+
+
+@pytest.fixture(autouse=True)
+def app_identity():
+    # The app's own identity for Architecture Map evidence: "this computer" unless a test chooses an instance.
+    from core import instance_identity
+    instance_identity.reset()
+    instance_identity._cache["key"] = "external:this-computer"
+    instance_identity._cache["account"] = "123456789012"  # The moto account: no real STS call in tests.
+    yield
+    instance_identity.reset()
 
 
 @pytest.fixture(autouse=True)

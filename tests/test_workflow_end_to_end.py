@@ -84,7 +84,7 @@ def object_key(workflow_id):
 
 def deliver_s3_event(workflow_id):
     """S3 notifies Lambda. Every delivery is a new invocation with a new request ID, as in AWS."""
-    context = SimpleNamespace(aws_request_id=uuid.uuid4().hex)
+    context = SimpleNamespace(aws_request_id=uuid.uuid4().hex, invoked_function_arn="arn:aws:lambda:us-east-1:123456789012:function:aws-lab-workflow-processor")
     return processor.lambda_handler(s3_event(object_key(workflow_id)), context)
 
 

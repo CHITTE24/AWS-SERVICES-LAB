@@ -133,6 +133,11 @@ def get_settings():
         "workflow_max_per_hour": read_int("WORKFLOW_MAX_PER_HOUR", 30),
         # DynamoDB deletes workflow stages after this many days (Time To Live). The local list keeps them.
         "workflow_retention_days": read_int("WORKFLOW_RETENTION_DAYS", 7),
+        # ---- Architecture Map (routes/architecture_routes.py) ----
+        # A SEPARATE SQLite file for diagrams and the evidence history, so data/lab.db is never changed.
+        "architecture_database_path": resolve_path(os.getenv("ARCHITECTURE_DATABASE_PATH", "data/architecture.db")),
+        # Evidence older than this is shown as stale (yellow), never as a current success.
+        "evidence_max_age_hours": read_int("ARCH_EVIDENCE_MAX_AGE_HOURS", 24),
         # Logging detail level and file location.
         "log_level": os.getenv("LOG_LEVEL", "INFO").upper(),
         "log_file": PROJECT_ROOT / "logs" / "app.log",

@@ -16,6 +16,7 @@ from core.aws_errors import NOT_CONFIGURED, PROBLEM_STATUSES  # Status words.
 from core.config import get_settings  # Reads the configuration for the Security Configuration panel.
 from core.form_checks import MAX_DOCUMENT_BYTES, check_document, validate_submission  # Form checks.
 from core.templates import render  # Renders HTML pages.
+from experiments import architecture_evidence  # Records results as Architecture Map evidence.
 from experiments import environment_check, submission_workflow  # The two workflows.
 from repositories import submission_repository  # Reads saved submissions.
 from repositories.history_repository import save_run  # Saves environment checks to the run history.
@@ -165,6 +166,7 @@ async def submit(request: Request, username: str = Depends(require_login)):
         logger.warning("Duplicate check failed: %s", error)  # The workflow below reports the database problem.
 
     result = await run_in_threadpool(submission_workflow.process_submission, submission_id, username, values, document)
+    architecture_evidence.record_submission(result)  # Statuses only (no personal data). Never raises.
     if result["saved"]:
         # Post/Redirect/Get: refreshing the result page only reloads it, it does not submit again.
         return RedirectResponse(f"/?submission_id={submission_id}", status_code=303)
@@ -183,7 +185,8 @@ async def run_environment_check(request: Request, username: str = Depends(requir
     checks = await run_in_threadpool(environment_check.run, request_info)
     seconds = time.monotonic() - started
     status = "error" if any(row["status"] in PROBLEM_STATUSES for row in checks) else "success"
-    save_run("experiment", "AWS environment check", {}, status, checks, username)
+    run_id = save_run("experiment", "AWS environment check", {}, status, checks, username)
+    architecture_evidence.record_environment_check(checks, run_id)  # Never raises; see the module.
     checked_text = (f"{checked_at:%Y-%m-%d %H:%M:%S} UTC, region {get_settings()['aws_region']}, "
                     f"took {seconds:.1f} s")
     return show_page(request, checks=checks, checked_at=checked_text)

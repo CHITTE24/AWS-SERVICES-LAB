@@ -1,0 +1,14 @@
+# Third-party browser libraries for the Architecture Map. Downloaded once from the official npm registry.
+# Each tarball was checked against the registry's own sha512 integrity value before use.
+# No CDN is used at runtime. tests/test_vendor_files.py re-checks the SHA-256 values below.
+# Licence: MIT (each folder contains the package's LICENSE file).
+#
+# package | version | npm tarball | npm integrity (verified)
+# cytoscape | 3.34.4 | https://registry.npmjs.org/cytoscape/-/cytoscape-3.34.4.tgz | sha512-msY99tMY8iWTg+sIPGfSqDcPNOt4xcj+v/K/7qUFaCUxxlqnMkUYLBjRUzn9W5CU/R2hrmtJa5+UtovrEM2ctg==
+# cytoscape-dagre | 4.0.1 | https://registry.npmjs.org/cytoscape-dagre/-/cytoscape-dagre-4.0.1.tgz | sha512-hyNdh8Vp1nwzBcjHnM4c71G81bFhPmQYLXD2HM9AZIvl+8TrMzWEOPW45hF/XOBQiEguPcDQzi6VrXR1XBcXOA==
+#
+# sha256  file
+081591ab735b2b6a3b31a3c60f8f3a3e2fee8c92939e0c7820ad1208571b6cd8  cytoscape-3.34.4/cytoscape.min.js
+eb319c6e6f233607f71e8e2f450391751883cfc0eeb3ca7ef574c13d1d9c2203  cytoscape-3.34.4/LICENSE
+ec671a41d2bfcac580352e2997797793949e3489cecaf347fc48670d4bd456b0  cytoscape-dagre-4.0.1/cytoscape-dagre.min.js
+c8f8d9008103872d6686927c1646c9267726c1f1c44a8f625399325b6d190837  cytoscape-dagre-4.0.1/LICENSE

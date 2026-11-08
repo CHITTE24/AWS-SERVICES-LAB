@@ -1,0 +1,51 @@
+/* Architecture Map page only (templates/architecture.html). Colours match static/style.css. */
+.arch-toolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
+.arch-toolbar button, .file-button { padding: 6px 10px; font-size: 0.85rem; }
+.inline-label { display: inline-flex; gap: 6px; align-items: center; margin: 0; font-weight: 600; }
+.inline-label select { margin: 0; }
+.file-button { display: inline-block; border: 1px solid var(--border); border-radius: 6px; background: var(--surface);
+               cursor: pointer; font-weight: 400; margin: 0; }
+.file-button input { display: none; }
+#arch-status { margin-left: 8px; }
+.arch-status-error { color: var(--error); font-weight: 700; }
+
+.arch-main { display: grid; grid-template-columns: 170px 1fr 340px; gap: 10px; min-height: 620px; }
+.arch-page[data-mode="present"] .arch-main { grid-template-columns: 1fr 320px; }
+.arch-canvas { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; min-height: 620px; }
+.arch-palette, .arch-details { background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+                               padding: 8px; overflow-y: auto; max-height: 720px; }
+.arch-palette input { max-width: none; }
+.palette-item { display: block; width: 100%; text-align: left; margin: 3px 0; padding: 5px 6px; font-size: 0.8rem; }
+.arch-details h3 { margin: 4px 0 8px; font-size: 1rem; }
+.arch-details label { font-size: 0.85rem; }
+.arch-details input, .arch-details select, .arch-details textarea { max-width: none; width: 100%; }
+.arch-details textarea { min-height: 70px; padding: 6px; font: inherit; }
+.arch-details .section { border-top: 1px solid var(--border); margin-top: 10px; padding-top: 8px; }
+.arch-details .kv { font-size: 0.82rem; margin: 3px 0; overflow-wrap: anywhere; }
+.arch-details .kv b { display: inline-block; min-width: 90px; }
+.arch-details table { font-size: 0.75rem; }
+
+.chip { display: inline-block; padding: 2px 8px; border-radius: 10px; color: #fff; font-weight: 700; font-size: 0.8rem; }
+.chip-green { background: var(--success); }
+.chip-red { background: var(--error); }
+.chip-yellow { background: var(--warning); }
+.chip-gray { background: var(--muted); }
+/* Manual evidence: always a prominent, outlined MANUAL badge, never mistaken for automatic evidence. */
+.badge-manual { display: inline-block; padding: 1px 6px; border: 2px dotted var(--text); border-radius: 8px;
+                font-size: 0.72rem; font-weight: 800; letter-spacing: 0.04em; }
+.badge-automatic { display: inline-block; padding: 1px 6px; border: 1px solid var(--muted); border-radius: 8px;
+                   font-size: 0.72rem; font-weight: 700; }
+
+.arch-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; align-items: center; }
+.line { display: inline-block; width: 34px; height: 0; border-top: 3px solid; vertical-align: middle; }
+.line-green { border-color: var(--success); }
+.line-red { border-color: var(--error); }
+.line-yellow { border-color: var(--warning); }
+.line-gray { border-color: #8a94a3; }
+.line-dashed { border-top-style: dashed; }
+.line-dotted { border-top-style: dotted; border-top-width: 4px; }
+
+@media (max-width: 1000px) {
+  .arch-main, .arch-page[data-mode="present"] .arch-main { grid-template-columns: 1fr; }
+  .arch-canvas { min-height: 480px; }
+}

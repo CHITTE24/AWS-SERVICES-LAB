@@ -1,0 +1,2 @@
+# Third-party files must stay byte-for-byte identical (their SHA-256 values are tested).
+static/vendor/** -text

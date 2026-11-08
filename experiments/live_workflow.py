@@ -24,6 +24,7 @@ from botocore.exceptions import ClientError  # The error type AWS services raise
 from core.aws_errors import (ACCESS_DENIED, CONFIGURATION_ERROR, NOT_FOUND, TIMED_OUT, UNAVAILABLE, WRONG_REGION,
                              classify_error)
 from core.config import get_settings  # Reads the bucket, KMS key, deadlines, and limits.
+from experiments import architecture_evidence  # Records real results as Architecture Map evidence.
 from experiments import workflow_simulator  # The offline simulation.
 from experiments import workflow_states as rules  # States, stages, and time helpers.
 from integrations import s3  # The existing S3 upload, plus HeadObject.
@@ -176,17 +177,31 @@ def start_real(workflow_id, owner, document):
         raise WorkflowError(problem)
     workflow, created = create(workflow_id, owner, "aws", None, document, rules.utc_now())
     if created:  # A repeated request for an existing workflow never uploads again.
-        run_fastapi_stages(workflow, document)
+        # The exact resources this workflow uses, saved NOW for the Architecture Map (never re-read from .env).
+        context = architecture_evidence.capture_workflow_context(workflow)
+        if workflow["store"] == "dynamodb":
+            architecture_evidence.record_app_operation(context, "dynamodb:TransactWriteItems", "dynamodb",
+                                                       (context or {}).get("table_name"), "workflow.created",
+                                                       "This app created the workflow record in this table.")
+        run_fastapi_stages(workflow, document, context)
     return workflow_id
 
 
-def run_fastapi_stages(workflow, document):
-    """Stages 2-4. Each stage is Completed only when AWS's own answer proves it."""
+def run_fastapi_stages(workflow, document, context=None):
+    """Stages 2-4. Each stage is Completed only when AWS's own answer proves it.
+
+    context: the identity snapshot from architecture_evidence.capture_workflow_context(). Each operation's
+    real result (success, AWS error, or verification mismatch) is also recorded as Architecture Map evidence.
+    """
     settings = get_settings()
     bucket, key, kms_key_arn = settings["s3_bucket_name"], workflow["s3_key"], settings["s3_kms_key_arn"]
 
     def update(stage_id, state, detail):
         workflow_repository.set_stage(workflow, stage_id, state, detail, rules.SOURCE_FASTAPI, attempt=1)
+
+    def evidence(operation_name, target_type, target_identifier, check_id, detail, error=None, mismatch=False):
+        architecture_evidence.record_app_operation(context, operation_name, target_type, target_identifier, check_id,
+                                                   detail, error=error, mismatch=mismatch)
 
     def skip_later(stage_ids, reason):
         for stage_id in stage_ids:
@@ -200,9 +215,11 @@ def run_fastapi_stages(workflow, document):
     except Exception as error:
         logger.warning("Workflow %s: upload failed: %s", workflow["workflow_id"], log_summary(error))
         update("upload", rules.FAILED, safe_error_detail(error))
+        evidence("s3:PutObject", "s3", bucket, "workflow.upload", safe_error_detail(error), error=error)
         skip_later(("verify", "kms", "event", "lambda"), "Skipped: the upload failed, so there is no object.")
         return
     etag_end = put["etag"].strip('"')[-6:]  # The last characters of the ETag, enough to recognise it.
+    evidence("s3:PutObject", "s3", bucket, "workflow.upload", "S3 accepted the upload (PutObject).")
     update("upload", rules.COMPLETED, f"S3 acknowledged the PutObject request (ETag ...{etag_end}). "
                                       "This is only an acknowledgement; the next stage checks the object independently.")
 
@@ -213,6 +230,7 @@ def run_fastapi_stages(workflow, document):
     except Exception as error:
         logger.warning("Workflow %s: HeadObject failed: %s", workflow["workflow_id"], log_summary(error))
         update("verify", rules.FAILED, safe_error_detail(error))
+        evidence("s3:HeadObject", "s3", bucket, "workflow.verify", safe_error_detail(error), error=error)
         update("kms", rules.SKIPPED, "Skipped: the object could not be read, so its encryption is unknown.")
         return
     problems = []
@@ -224,14 +242,22 @@ def run_fastapi_stages(workflow, document):
         problems.append("the workflow-id label does not match")
     if problems:
         update("verify", rules.FAILED, "HeadObject found the object, but " + "; ".join(problems) + ".")
+        # The HeadObject CALL worked; the object did not match. That is a mismatch, not an AWS failure.
+        evidence("s3:HeadObject", "s3", bucket, "workflow.verify",
+                 "HeadObject worked, but the object did not match the upload.", mismatch=True)
     else:
+        evidence("s3:HeadObject", "s3", bucket, "workflow.verify", "HeadObject confirmed the uploaded object.")
         update("verify", rules.COMPLETED, f"HeadObject found the object: {head['size']:,} bytes, the same ETag, "
                                           "and the matching workflow-id label.")
 
     # ---- 4. SSE-KMS, from HeadObject's metadata (nothing is decrypted).
+    key_id = (context or {}).get("kms_key_id")
     if head["encryption"] == "aws:kms" and head["kms_key_id"] == kms_key_arn:
+        evidence("kms:GenerateDataKey", "kms", key_id, "workflow.kms", "S3 reported SSE-KMS with this key.")
         update("kms", rules.COMPLETED, f"S3 reports aws:kms encryption with the configured key ({short_key(kms_key_arn)}).")
     else:
+        evidence("kms:GenerateDataKey", "kms", key_id, "workflow.kms",
+                 "S3 did not report SSE-KMS with this key (verification mismatch).", mismatch=True)
         update("kms", rules.FAILED, f"S3 reports encryption '{head['encryption'] or 'none'}' with key "
                                     f"{short_key(head['kms_key_id'])}, not the configured key ({short_key(kms_key_arn)}).")
 
@@ -264,7 +290,10 @@ def refresh(workflow_id, now=None):
         if workflow_repository.set_stage(workflow, stage["stage_id"], rules.TIMED_OUT,
                                          timeout_detail(workflow, stage), source, now=now):
             changed = True
-    return workflow_repository.get_workflow(workflow_id) if changed else workflow
+    workflow = workflow_repository.get_workflow(workflow_id) if changed else workflow
+    if workflow["mode"] == "aws":
+        architecture_evidence.record_workflow(workflow)  # What the Lambda function reported (never raises).
+    return workflow
 
 
 def describe(workflow, now=None):
